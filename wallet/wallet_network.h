@@ -23,6 +23,7 @@
 #include "core/proto.h"
 #include "utility/io/timer.h"
 #include <boost/intrusive/set.hpp>
+#include "wallet_direct_io.h"
 #include "wallet.h"
 
 namespace beam
@@ -53,6 +54,7 @@ namespace beam
         WalletNetworkIO(io::Address node_address
                       , IKeyChain::Ptr keychain
                       , IKeyStore::Ptr keyStore
+                      , io::Address listenTo = io::Address()
                       , io::Reactor::Ptr reactor = io::Reactor::Ptr()
                       , unsigned reconnect_ms = 1000 // 1 sec
                       , unsigned sync_period_ms = 20 * 1000);  // 20 sec
@@ -154,6 +156,9 @@ namespace beam
 
         bool handle_bbs_message(proto::BbsMsg&& msg);
 
+        // Direct io callback
+        WalletID* handle_direct_io_message(proto::BbsMsg&& msg, bool& txEnded);
+
         void reset_connection();
 
         class WalletNodeConnection : public proto::NodeConnection
@@ -214,5 +219,8 @@ namespace beam
         IKeyStore::Ptr m_keystore;
         std::set<PubKey> m_myPubKeys;
         const WalletID* m_lastReceiver;
+        WalletID m_lastBbsPeer;
+        bool m_bbsDialogEnded;
+        WalletDirectIO::Ptr m_directIO;
     };
 }

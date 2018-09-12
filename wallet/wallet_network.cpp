@@ -31,6 +31,7 @@ namespace beam {
     WalletNetworkIO::WalletNetworkIO(io::Address node_address
                                    , IKeyChain::Ptr keychain
                                    , IKeyStore::Ptr keyStore
+                                   , io::Address listenTo
                                    , io::Reactor::Ptr reactor
                                    , unsigned reconnect_ms
                                    , unsigned sync_period_ms)
@@ -50,6 +51,7 @@ namespace beam {
         , m_sync_timer{io::Timer::create(m_reactor)}
         , m_keystore(keyStore)
         , m_lastReceiver(0)
+        , m_bbsDialogEnded(false)
     {
         m_protocol.add_message_handler<WalletNetworkIO, wallet::Invite,             &WalletNetworkIO::on_message>(senderInvitationCode, this, 1, 20000);
         m_protocol.add_message_handler<WalletNetworkIO, wallet::ConfirmTransaction, &WalletNetworkIO::on_message>(senderConfirmationCode, this, 1, 20000);
@@ -71,6 +73,10 @@ namespace beam {
         for (const auto& k : m_myPubKeys)
         {
             listen_to_bbs_channel(k);
+        }
+
+        if (!listenTo.empty()) {
+            m_directIO = WalletDirectIO::create(listenTo, BIND_THIS_MEMFN(handle_direct_io_message));
         }
     }
 
@@ -173,6 +179,7 @@ namespace beam {
     void WalletNetworkIO::address_deleted(const WalletID& address)
     {
         m_myPubKeys.erase(address);
+        m_keystore->erase_key(address);
     }
 
     void WalletNetworkIO::close_node_connection()
@@ -204,6 +211,8 @@ namespace beam {
     {
         assert(m_lastReceiver);
         get_wallet().handle_tx_message(*m_lastReceiver, move(msg));
+        m_lastBbsPeer = msg.m_from;
+        m_bbsDialogEnded = false;
         return true;
     }
 
@@ -211,6 +220,8 @@ namespace beam {
     {
         assert(m_lastReceiver);
         get_wallet().handle_tx_message(*m_lastReceiver, move(msg));
+        m_lastBbsPeer = msg.m_from;
+        m_bbsDialogEnded = false;
         return true;
     }
 
@@ -218,6 +229,8 @@ namespace beam {
     {
         assert(m_lastReceiver);
         get_wallet().handle_tx_message(*m_lastReceiver, move(msg));
+        m_lastBbsPeer = msg.m_from;
+        m_bbsDialogEnded = false;
         return true;
     }
 
@@ -225,6 +238,8 @@ namespace beam {
     {
         assert(m_lastReceiver);
         get_wallet().handle_tx_message(*m_lastReceiver, move(msg));
+        m_lastBbsPeer = msg.m_from;
+        m_bbsDialogEnded = true;
         return true;
     }
 
@@ -232,6 +247,8 @@ namespace beam {
     {
         assert(m_lastReceiver);
         get_wallet().handle_tx_message(*m_lastReceiver, move(msg));
+        m_lastBbsPeer = msg.m_from;
+        m_bbsDialogEnded = true;
         return true;
     }
 
@@ -353,7 +370,17 @@ namespace beam {
             }
         }
 
+        m_lastReceiver = 0;
         return true;
+    }
+
+    WalletID* WalletNetworkIO::handle_direct_io_message(proto::BbsMsg&& msg, bool& txEnded) {
+        handle_bbs_message(std::move(msg));
+        if (m_lastReceiver) {
+            txEnded = m_bbsDialogEnded;
+            return &m_lastBbsPeer;
+        }
+        return 0;
     }
 
     void WalletNetworkIO::set_node_address(io::Address node_address)

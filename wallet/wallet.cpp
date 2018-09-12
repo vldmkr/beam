@@ -63,7 +63,7 @@ namespace beam
                 << beams.data();
             return os;
         }
-        
+
         if (amount.m_value >= Rules::Coin)
         {
             os << setw(width - beams.length()) << Amount(amount.m_value / Rules::Coin) << beams.data();
@@ -206,7 +206,7 @@ namespace beam
             m_removedNegotiators.push_back(move(it->second));
             m_negotiators.erase(it);
         }
- 
+
         if (m_tx_completed_action)
         {
             m_tx_completed_action(tx.m_txId);
@@ -296,7 +296,7 @@ namespace beam
             LOG_DEBUG() << ReceiverPrefix << "Unexpected tx invitation " << msg.m_txId;
         }
     }
-    
+
     void Wallet::handle_tx_message(const WalletID& receiver, ConfirmTransaction&& data)
     {
         LOG_DEBUG() << ReceiverPrefix << "Received sender tx confirmation " << data.m_txId;
@@ -481,7 +481,7 @@ namespace beam
 
     bool Wallet::handle_node_message(proto::NewTip&& msg)
     {
-        // TODO: restore from wallet db 
+        // TODO: restore from wallet db
         for (auto& r : m_pending_reg_requests)
         {
             register_tx(r.first, r.second);
@@ -496,7 +496,7 @@ namespace beam
     {
         Block::SystemState::ID newID = {};
         msg.m_Description.get_ID(newID);
-        
+
         m_newState = msg.m_Description;
 
         if (newID == m_knownStateID)
@@ -530,7 +530,7 @@ namespace beam
         {
             if (minedCoin.m_Active && minedCoin.m_ID.m_Height >= currentHeight) // we store coins from active branch
             {
-                // coinbase 
+                // coinbase
                 mined.emplace_back(Rules::get().CoinbaseEmission
                                  , Coin::Unconfirmed
                                  , minedCoin.m_ID.m_Height
@@ -689,8 +689,8 @@ namespace beam
         vector<Coin> unconfirmed;
         m_keyChain->visit([&](const Coin& coin)
         {
-            if (coin.m_createTxId == txID && coin.m_status == Coin::Unconfirmed
-                || coin.m_spentTxId == txID && coin.m_status == Coin::Locked)
+            if ((coin.m_createTxId == txID && coin.m_status == Coin::Unconfirmed)
+                || (coin.m_spentTxId == txID && coin.m_status == Coin::Locked))
             {
                 unconfirmed.emplace_back(coin);
             }
@@ -722,7 +722,7 @@ namespace beam
         }
         ++m_syncTotal;
         report_sync_progress();
-        
+
     }
 
     bool Wallet::exit_sync()
