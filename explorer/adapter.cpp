@@ -142,13 +142,10 @@ private:
     bool get_status(io::SerializedMsg& out) override {
         if (_statusDirty) {
             const auto& cursor = _nodeBackend.m_Cursor;
+            const auto& extra = _nodeBackend.m_Extra;
 
             _cache.currentHeight = cursor.m_Sid.m_Height;
             _cache.lowHorizon = cursor.m_LoHorizon;
-
-            uint32_t packed = cursor.m_Full.m_PoW.m_Difficulty.m_Packed;
-            uint32_t difficultyOrder = packed >> Difficulty::s_MantissaBits;
-            uint32_t difficultyMantissa = packed & ((1U << Difficulty::s_MantissaBits) - 1);
 
             char buf[80];
 
@@ -160,10 +157,12 @@ private:
                     { "is_syncing", _nodeIsSyncing },
                     { "timestamp", cursor.m_Full.m_TimeStamp },
                     { "height", _cache.currentHeight },
+                    { "low_horizon", cursor.m_LoHorizon },
                     { "hash", hash_to_hex(buf, cursor.m_ID.m_Hash) },
-                    { "prev", hash_to_hex(buf, cursor.m_Full.m_Prev) },
-                    { "difficulty_order", difficultyOrder },
-                    { "difficulty_mantissa", difficultyMantissa }
+                    { "chainwork",  uint256_to_hex(buf, cursor.m_Full.m_ChainWork) },
+                    { "subsidy",  extra.m_Subsidy.Lo },
+                    { "subsidy_hi",  extra.m_Subsidy.Hi },
+                    { "subsidy_open",  extra.m_SubsidyOpen }
                 }
             )) {
                 return false;
@@ -343,26 +342,23 @@ private:
         return get_block_impl(out, height, row, 0);
     }
 
-    bool get_blocks(io::SerializedMsg& out, uint64_t startHeight, uint64_t endHeight) override {
+    bool get_blocks(io::SerializedMsg& out, uint64_t startHeight, uint64_t n) override {
         static const uint64_t maxElements = 100;
-        if (endHeight < startHeight) {
-            endHeight = startHeight;
-        } else if (endHeight - startHeight + 1 > maxElements) {
-            endHeight = startHeight + maxElements - 1;
-        }
+        if (n > maxElements) n = maxElements;
+        else if (n==0) n=1;
+        Height endHeight = startHeight + n - 1;
         out.push_back(_leftBrace);
         uint64_t row = 0;
         uint64_t prevRow = 0;
-        Height h = endHeight;
         for (;;) {
-            bool ok = get_block_impl(out, h, row, &prevRow);
+            bool ok = get_block_impl(out, endHeight, row, &prevRow);
             if (!ok) return false;
-            if (h == startHeight) {
+            if (endHeight == startHeight) {
                 break;
             }
             out.push_back(_comma);
             row = prevRow;
-            --h;
+            --endHeight;
         }
         out.push_back(_rightBrace);
         return true;

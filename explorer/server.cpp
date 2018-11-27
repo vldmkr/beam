@@ -1,7 +1,20 @@
+// Copyright 2018 The Beam Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "server.h"
 #include "adapter.h"
 #include "utility/logger.h"
-// TODO suppress warnings #include "secp256k1-zkp/src/hash_impl.h"
 #include <boost/filesystem.hpp>
 #include <boost/algorithm/string/trim.hpp>
 #include <fstream>
@@ -10,7 +23,7 @@ namespace beam { namespace explorer {
 
 namespace {
 
-#define STS "Status server: "
+#define STS "Explorer server: "
 
 static const uint64_t SERVER_RESTART_TIMER = 1;
 static const uint64_t ACL_REFRESH_TIMER = 2;
@@ -147,9 +160,12 @@ bool Server::send_block(const HttpConnection::Ptr &conn) {
 }
 
 bool Server::send_blocks(const HttpConnection::Ptr& conn) {
-    auto start = _currentUrl.get_int_arg("start", 0);
-    auto end = _currentUrl.get_int_arg("end", 0);
-    if (!_backend.get_blocks(_body, start, end)) {
+    auto start = _currentUrl.get_int_arg("height", 0);
+    auto n = _currentUrl.get_int_arg("n", 0);
+    if (start == 0 || n < 1) {
+        return send(conn, 400, "Bad request");
+    }
+    if (!_backend.get_blocks(_body, start, n)) {
         return send(conn, 500, "Internal error #3");
     }
     return send(conn, 200, "OK");
