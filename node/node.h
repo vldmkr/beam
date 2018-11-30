@@ -27,7 +27,7 @@ namespace beam
 	struct INodeObserver
 	{
 		virtual void OnSyncProgress(int done, int total) = 0;
-        virtual void OnStateChanged() {}
+		virtual void OnStateChanged() {}
 	};
 
 struct Node
@@ -47,7 +47,7 @@ struct Node
 		bool m_RestrictMinedReportToOwner = true;
 
 #if defined(BEAM_USE_GPU)
-        bool m_UseGpu;
+		bool m_UseGpu;
 #endif
 
 		struct Timeout {
@@ -102,6 +102,7 @@ struct Node
 			uint32_t m_Timeout_ms = 10000;
 
 			bool m_ForceResync = false;
+			bool m_NoFastSync = false;
 
 		} m_Sync;
 
@@ -158,7 +159,7 @@ private:
 		void OnModified() override;
 
 		void ReportProgress();
-        void ReportNewState();
+		void ReportNewState();
 
 		struct Verifier
 		{

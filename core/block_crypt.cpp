@@ -1087,6 +1087,30 @@ namespace beam
 		res += base;
 	}
 
+    double Difficulty::ToFloat() const
+    {
+        uint32_t order, mantissa;
+        Unpack(order, mantissa);
+
+        int nOrderCorrected = order - s_MantissaBits; // must be signed
+        return ldexp(mantissa, nOrderCorrected);
+    }
+
+    double Difficulty::ToFloat(Raw& x)
+    {
+        double res = 0;
+
+        int nOrder = x.nBits - 8 - s_MantissaBits;
+        for (uint32_t i = 0; i < x.nBytes; i++, nOrder -= 8)
+        {
+            uint8_t n = x.m_pData[i];
+            if (n)
+                res += ldexp(n, nOrder);
+        }
+
+        return res;
+    }
+
 	void Difficulty::Adjust(uint32_t src, uint32_t trg, uint32_t nMaxOrderChange)
 	{
 		if (!(src || trg))

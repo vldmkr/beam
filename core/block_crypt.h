@@ -57,6 +57,9 @@ namespace beam
 
 		void Adjust(uint32_t src, uint32_t trg, uint32_t nMaxOrderChange);
 
+        double ToFloat() const;
+        static double ToFloat(Raw&);
+
 	private:
 		static void Adjust(uint32_t src, uint32_t trg, uint32_t nMaxOrderChange, uint32_t& order, uint32_t& mantissa);
 	};
