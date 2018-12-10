@@ -177,7 +177,6 @@ WalletModel::WalletModel(IWalletDB::Ptr walletDB, const std::string& nodeAddr)
     qRegisterMetaType<WalletStatus>("WalletStatus");
     qRegisterMetaType<ChangeAction>("beam::ChangeAction");
     qRegisterMetaType<vector<TxDescription>>("std::vector<beam::TxDescription>");
-    qRegisterMetaType<vector<TxPeer>>("std::vector<beam::TxPeer>");
     qRegisterMetaType<Amount>("beam::Amount");
     qRegisterMetaType<vector<Coin>>("std::vector<beam::Coin>");
     qRegisterMetaType<vector<WalletAddress>>("std::vector<beam::WalletAddress>");
@@ -203,7 +202,7 @@ WalletModel::~WalletModel()
 
 WalletStatus WalletModel::getStatus() const
 {
-    WalletStatus status{ wallet::getAvailable(_walletDB), 0, 0, 0};
+    WalletStatus status{ _walletDB->getAvailable(), 0, 0, 0};
 
     auto history = _walletDB->getTxHistory();
 
@@ -218,7 +217,7 @@ WalletStatus WalletModel::getStatus() const
         }
     }
 
-    status.unconfirmed += wallet::getTotal(_walletDB, Coin::Incoming) + wallet::getTotal(_walletDB, Coin::Change);
+    status.unconfirmed += _walletDB->getTotal(Coin::Incoming) + _walletDB->getTotal(Coin::Change);
 
     status.update.lastTime = _walletDB->getLastUpdateTime();
     ZeroObject(status.stateID);
@@ -238,7 +237,6 @@ void WalletModel::run()
 
         emit onStatus(getStatus());
         emit onTxStatus(beam::ChangeAction::Reset, _walletDB->getTxHistory());
-        emit onTxPeerUpdated(_walletDB->getPeers());
 
         _logRotateTimer = io::Timer::create(*_reactor);
         _logRotateTimer->start(
@@ -334,11 +332,6 @@ void WalletModel::onSystemStateChanged()
     onStatusChanged();
 }
 
-void WalletModel::onTxPeerChanged()
-{
-    emit onTxPeerUpdated(_walletDB->getPeers());
-}
-
 void WalletModel::onAddressChanged()
 {
     emit onAdrresses(true, _walletDB->getAddresses(true));
@@ -413,7 +406,6 @@ void WalletModel::getWalletStatus()
 {
     emit onStatus(getStatus());
     emit onTxStatus(beam::ChangeAction::Reset, _walletDB->getTxHistory());
-    emit onTxPeerUpdated(_walletDB->getPeers());
     emit onAdrresses(false, _walletDB->getAddresses(false));
 }
 
@@ -455,7 +447,7 @@ void WalletModel::saveAddress(const WalletAddress& address, bool bOwn)
         auto s = _wnet.lock();
         if (s)
         {
-            static_pointer_cast<WalletNetworkViaBbs>(s)->AddOwnAddress(address.m_OwnID, address.m_walletID);
+            static_pointer_cast<WalletNetworkViaBbs>(s)->AddOwnAddress(address);
         }
     }
 }

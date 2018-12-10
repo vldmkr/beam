@@ -128,11 +128,6 @@ namespace
         void deleteTx(const TxID& ) override {};
         void rollbackTx(const TxID&) override {}
 
-        std::vector<TxPeer> getPeers() override { return {}; };
-        void addPeer(const TxPeer&) override {}
-        boost::optional<TxPeer> getPeer(const WalletID&) override { return boost::optional<TxPeer>{}; }
-        void clearPeers() override {}
-
         std::vector<WalletAddress> getAddresses(bool own) override { return {}; }
         void saveAddress(const WalletAddress&) override {}
         boost::optional<WalletAddress> getAddress(const WalletID& id) override
@@ -180,6 +175,11 @@ namespace
 
         Block::SystemState::IHistory& get_History() override { return m_Hist; }
         void ShrinkHistory() override {}
+
+        Amount getAvailable() override { return 0; };
+        Amount getAvailableByType(Key::Type keyType) override { return 0; };
+        Amount getTotal(Coin::Status status) override { return 0; };
+        Amount getTotalByType(Coin::Status status, Key::Type keyType) override { return 0; };
 
     protected:
         std::vector<beam::Coin> m_coins;
@@ -320,7 +320,7 @@ struct TestWalletRig
         m_NodeNetwork.m_Cfg.m_vNodes.push_back(io::Address::localhost().port(32125));
         m_NodeNetwork.Connect();
 
-        m_WalletNetworkViaBbs.AddOwnAddress(wa.m_OwnID, m_WalletID);
+        m_WalletNetworkViaBbs.AddOwnAddress(wa);
     }
 
     vector<Coin> GetCoins()

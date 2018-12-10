@@ -998,13 +998,16 @@ void TestKdf()
 		verify_test(pk0 == Zero);
 	}
 
+	const std::string sPass("test password");
+
 	beam::KeyString ks1;
-	SetRandom(ks1.m_hvSecret.V);
+	ks1.SetPassword(sPass);
 	ks1.m_sMeta = "hello, World!";
 
 	ks1.Export(skdf);
 	HKdf skdf2;
 	ks1.m_sMeta.clear();
+	ks1.SetPassword(sPass);
 	verify_test(ks1.Import(skdf2));
 
 	verify_test(skdf2.IsSame(skdf));
@@ -1684,7 +1687,9 @@ void RunBenchmark()
 
 	{
 		BenchmarkMeter bm("BulletProof.Verify x100");
-		bm.N = 10;
+
+		const uint32_t nBatch = 100;
+		bm.N = 10 * nBatch;
 
 		typedef InnerProduct::BatchContextEx<100> MyBatch;
 		std::unique_ptr<MyBatch> p(new MyBatch);
@@ -1694,9 +1699,9 @@ void RunBenchmark()
 
 		do
 		{
-			for (uint32_t i = 0; i < bm.N; i++)
+			for (uint32_t i = 0; i < bm.N; i += nBatch)
 			{
-				for (int n = 0; n < 100; n++)
+				for (uint32_t n = 0; n < nBatch; n++)
 				{
 					Oracle oracle;
 					bp.IsValid(comm, oracle);

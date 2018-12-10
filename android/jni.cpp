@@ -344,7 +344,6 @@ namespace
 	static jclass WalletStatusClass = 0;
 	static jclass SystemStateClass = 0;
 	static jclass TxDescriptionClass = 0;
-	static jclass TxPeerClass = 0;
 	static jclass UtxoClass = 0;
     static jclass WalletAddressClass = 0;
 
@@ -395,7 +394,6 @@ namespace
 
                 //emit onStatus(getStatus());
                 //emit onTxStatus(beam::ChangeAction::Reset, _walletDB->getTxHistory());
-                //emit onTxPeerUpdated(_walletDB->getPeers());
 
                 _logRotateTimer = io::Timer::create(*_reactor);
                 _logRotateTimer->start(
@@ -514,7 +512,7 @@ namespace
                 auto s = _wnet.lock();
                 if (s)
                 {
-                    static_pointer_cast<WalletNetworkViaBbs>(s)->AddOwnAddress(address.m_OwnID, address.m_walletID);
+                    static_pointer_cast<WalletNetworkViaBbs>(s)->AddOwnAddress(address);
                 }
             }
         }
@@ -574,7 +572,6 @@ namespace
 			onStatus(getStatus());
 
 			onTxStatus(beam::ChangeAction::Reset, _walletDB->getTxHistory());
-			onTxPeerUpdated(_walletDB->getPeers());
 			onAdrresses(false, _walletDB->getAddresses(false));
 		}
 
@@ -683,37 +680,6 @@ namespace
 			}
 
 			env->CallStaticVoidMethod(WalletListenerClass, callback, action, txItems);
-		}
-
-		void onTxPeerUpdated(const std::vector<beam::TxPeer>& peers) 
-		{
-			LOG_DEBUG() << "onTxPeerUpdated()";
-
-			JNIEnv* env = Android_JNI_getEnv();
-
-			jmethodID callback = env->GetStaticMethodID(WalletListenerClass, "onTxPeerUpdated", "([L" BEAM_JAVA_PATH "/entities/TxPeer;)V");
-			
-			jobjectArray peerItems = 0;
-
-			if(!peers.empty())
-			{
-				peerItems = env->NewObjectArray(static_cast<jsize>(peers.size()), TxPeerClass, NULL);
-
-				for(int i = 0; i < peers.size(); ++i)
-				{
-					const auto& item = peers[i];
-
-					jobject tx = env->AllocObject(TxPeerClass);
-
-                    setStringField(env, TxPeerClass, tx, "walletID", to_string(item.m_walletID));
-                    setStringField(env, TxPeerClass, tx, "label", item.m_label);
-                    setStringField(env, TxPeerClass, tx, "address", item.m_address);
-
-					env->SetObjectArrayElement(peerItems, i, tx);
-				}				
-			}
-
-			env->CallStaticVoidMethod(WalletListenerClass, callback, peerItems);			
 		}
 
 		void onSyncProgressUpdated(int done, int total)
@@ -836,11 +802,6 @@ namespace
 			onStatus(getStatus());
 		}
 
-		void onTxPeerChanged() override
-		{
-			onTxPeerUpdated(_walletDB->getPeers());
-		}
-
 		void onAddressChanged() override
 		{
 			onAdrresses(true, _walletDB->getAddresses(true));
@@ -854,7 +815,7 @@ namespace
 
 		WalletStatus getStatus() const
 		{
-            WalletStatus status{ wallet::getAvailable(_walletDB), 0, 0, 0 };
+            WalletStatus status{ _walletDB->getAvailable(), 0, 0, 0 };
 
             auto history = _walletDB->getTxHistory();
 
@@ -869,7 +830,7 @@ namespace
                 }
             }
 
-            status.unconfirmed += wallet::getTotal(_walletDB, Coin::Incoming) + wallet::getTotal(_walletDB, Coin::Change);
+            status.unconfirmed += _walletDB->getTotal(Coin::Incoming) + _walletDB->getTotal(Coin::Change);
 
             status.update.lastTime = _walletDB->getLastUpdateTime();
             ZeroObject(status.stateID);
@@ -1155,11 +1116,6 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved)
 	{
 		jclass cls = env->FindClass(BEAM_JAVA_PATH "/entities/TxDescription");
 		TxDescriptionClass = reinterpret_cast<jclass>(env->NewGlobalRef(cls));
-	}
-
-	{
-		jclass cls = env->FindClass(BEAM_JAVA_PATH "/entities/TxPeer");
-		TxPeerClass = reinterpret_cast<jclass>(env->NewGlobalRef(cls));
 	}
 
 	{

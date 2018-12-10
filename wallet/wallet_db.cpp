@@ -61,7 +61,6 @@
 
 #define STORAGE_NAME "storage"
 #define VARIABLES_NAME "variables"
-#define PEERS_NAME "peers"
 #define ADDRESSES_NAME "addresses"
 #define TX_PARAMS_NAME "txparams"
 
@@ -87,14 +86,6 @@
     each(change,     change,     INTEGER NOT NULL, obj)
 
 #define HISTORY_FIELDS ENUM_HISTORY_FIELDS(LIST, COMMA, )
-
-#define ENUM_PEER_FIELDS(each, sep, obj) \
-    each(walletID,    walletID,    BLOB NOT NULL PRIMARY KEY, obj) sep \
-    each(address,     address,     TEXT NOT NULL, obj) sep \
-    each(label,       label,       TEXT NOT NULL , obj)
-
-#define PEER_FIELDS ENUM_PEER_FIELDS(LIST, COMMA, )
-
 
 #define ENUM_ADDRESS_FIELDS(each, sep, obj) \
     each(walletID,       walletID,       BLOB NOT NULL PRIMARY KEY, obj) sep \
@@ -192,8 +183,7 @@ namespace beam
 				std::vector<Link> m_vLinks;
 
 				struct Slot {
-					size_t m_iHead;
-					size_t m_iTail;
+					size_t m_iTop;
 					Amount m_Sum;
 				};
 
@@ -209,20 +199,19 @@ namespace beam
 				uint32_t get_Slot(Amount v) const
 				{
 					uint64_t i = v * s_Factor / m_Goal; // TODO - overflow check!
-					return (i >= s_Factor) ? s_Factor : static_cast<uint32_t>(i);
+                    uint32_t res = (i >= s_Factor) ? s_Factor : static_cast<uint32_t>(i);
+                    assert(res <= s_Factor + 1);
+                    return res;
 				}
 
 				void Append(Slot& rDst, Amount v, size_t i0)
 				{
 					m_vLinks.emplace_back();
 					m_vLinks.back().m_iElement = i0;
-					m_vLinks.back().m_iNext = rDst.m_iTail;
+					m_vLinks.back().m_iNext = rDst.m_iTop;
 
-					rDst.m_iTail = m_vLinks.size();
-					if (!rDst.m_iHead)
-						rDst.m_iHead = rDst.m_iTail;
-
-					rDst.m_Sum += v;
+                    rDst.m_iTop = m_vLinks.size();
+                    rDst.m_Sum += v;
 				}
 
 				bool IsBetter(Amount v, uint32_t iDst) const
@@ -290,7 +279,19 @@ namespace beam
 				{
 					Amount goal = amount - res.first;
 					SolveOnce(part, goal, iEnd);
+
 					Partial::Slot& r1 = part.m_pSlots[s_Factor];
+                    // reverse list direction
+                    size_t iPrev = 0;
+                    for (size_t i = r1.m_iTop; i; )
+                    {
+                        Partial::Link& link = part.m_vLinks[i - 1];
+                        size_t iNext = link.m_iNext;
+                        link.m_iNext = iPrev;
+                        iPrev = i;
+                        i = iNext;
+                    }
+                    r1.m_iTop = iPrev;
 
 					if (r1.m_Sum < goal)
 					{
@@ -305,7 +306,7 @@ namespace beam
 
 						res.first = part.m_pSlots[iSlot].m_Sum;
 
-						for (size_t iLink = part.m_pSlots[iSlot].m_iHead; iLink; )
+						for (size_t iLink = part.m_pSlots[iSlot].m_iTop; iLink; )
 						{
 							const Partial::Link& link = part.m_vLinks[iLink - 1];
 							iLink = link.m_iNext;
@@ -318,10 +319,10 @@ namespace beam
 					}
 
 					Amount nOvershoot = r1.m_Sum - goal;
-					bool bShouldRetry = (nOvershoot < nOvershootPrev);
+                    bool bShouldRetry = (nOvershoot < nOvershootPrev);
 					nOvershootPrev = nOvershoot;
 
-					for (size_t iLink = r1.m_iHead; iLink; )
+					for (size_t iLink = r1.m_iTop; iLink; )
 					{
 						const Partial::Link& link = part.m_vLinks[iLink - 1];
 						iLink = link.m_iNext;
@@ -591,6 +592,7 @@ namespace beam
 
             void Reset()
             {
+                sqlite3_clear_bindings(_stm);
                 sqlite3_reset(_stm);
             }
 
@@ -868,7 +870,7 @@ namespace beam
         const char* SystemStateIDName = "SystemStateID";
         const char* LastUpdateTimeName = "LastUpdateTime";
         const int BusyTimeoutMs = 1000;
-        const int DbVersion = 8;
+        const int DbVersion = 9;
     }
 
     Coin::Coin(Amount amount, Status status, Height maturity, Key::Type keyType, Height confirmHeight, Height lockedHeight)
@@ -941,12 +943,6 @@ namespace beam
 
             {
                 const char* req = "CREATE TABLE " VARIABLES_NAME " (" ENUM_VARIABLES_FIELDS(LIST_WITH_TYPES, COMMA,) ");";
-                int ret = sqlite3_exec(walletDB->_db, req, nullptr, nullptr, nullptr);
-                throwIfError(ret, walletDB->_db);
-            }
-
-            {
-                const char* req = "CREATE TABLE " PEERS_NAME " (" ENUM_PEER_FIELDS(LIST_WITH_TYPES, COMMA, ) ") WITHOUT ROWID;";
                 int ret = sqlite3_exec(walletDB->_db, req, nullptr, nullptr, nullptr);
                 throwIfError(ret, walletDB->_db);
             }
@@ -1188,12 +1184,34 @@ namespace beam
         return coins;
     }
 
+    namespace
+    {
+        struct InsertCoinStatement : public sqlite::Statement
+        {
+            InsertCoinStatement(sqlite3* db)
+                : sqlite::Statement(db, "INSERT OR REPLACE INTO " STORAGE_NAME " (" ENUM_ALL_STORAGE_FIELDS(LIST, COMMA, ) ") VALUES(" ENUM_ALL_STORAGE_FIELDS(BIND_LIST, COMMA, ) ");")
+            {
+            }
+
+            void apply(const Coin& coin)
+            {
+                sqlite::Statement& stm = *this;
+                int colIdx = 0;
+                ENUM_ALL_STORAGE_FIELDS(STM_BIND_LIST, NOSEP, coin);
+                stm.step();
+
+                Reset();
+            }
+        };
+    }
+
     void WalletDB::store(Coin& coin)
     {
         sqlite::Transaction trans(_db);
 
         coin.m_ID.m_Idx = AllocateKidRange(1);
-        storeImpl(coin);
+        InsertCoinStatement stm(_db);
+        stm.apply(coin);
 
         trans.commit();
         notifyCoinsChanged();
@@ -1207,11 +1225,11 @@ namespace beam
         sqlite::Transaction trans(_db);
 
         uint64_t nKeyIndex = AllocateKidRange(coins.size());
-
+        InsertCoinStatement stm(_db);
         for (auto& coin : coins)
         {
             coin.m_ID.m_Idx = nKeyIndex++;
-            storeImpl(coin);
+            stm.apply(coin);
         }
 
         trans.commit();
@@ -1220,7 +1238,8 @@ namespace beam
 
     void WalletDB::save(const Coin& coin)
     {
-        storeImpl(coin);
+        InsertCoinStatement stm(_db);
+        stm.apply(coin);
         notifyCoinsChanged();
     }
 
@@ -1230,23 +1249,14 @@ namespace beam
             return;
 
         sqlite::Transaction trans(_db);
-
+        InsertCoinStatement stm(_db);
         for (auto& coin : coins)
-            storeImpl(coin);
+        {
+            stm.apply(coin);
+        }
 
         trans.commit();
         notifyCoinsChanged();
-    }
-
-    void WalletDB::storeImpl(const Coin& coin)
-    {
-        const char* req = "INSERT OR REPLACE INTO " STORAGE_NAME " (" ENUM_ALL_STORAGE_FIELDS(LIST, COMMA, ) ") VALUES(" ENUM_ALL_STORAGE_FIELDS(BIND_LIST, COMMA, ) ");";
-        sqlite::Statement stm(_db, req);
-
-        int colIdx = 0;
-        ENUM_ALL_STORAGE_FIELDS(STM_BIND_LIST, NOSEP, coin);
-
-        stm.step();
     }
 
     uint64_t WalletDB::AllocateKidRange(uint64_t nCount)
@@ -1605,57 +1615,6 @@ namespace beam
         notifyCoinsChanged();
     }
 
-    std::vector<TxPeer> WalletDB::getPeers()
-    {
-        std::vector<TxPeer> peers;
-        sqlite::Statement stm(_db, "SELECT * FROM " PEERS_NAME ";");
-        while (stm.step())
-        {
-            auto& peer = peers.emplace_back();
-            int colIdx = 0;
-            ENUM_PEER_FIELDS(STM_GET_LIST, NOSEP, peer);
-        }
-        return peers;
-    }
-
-    void WalletDB::addPeer(const TxPeer& peer)
-    {
-        sqlite::Transaction trans(_db);
-
-        sqlite::Statement stm2(_db, "SELECT * FROM " PEERS_NAME " WHERE walletID=?1;");
-        stm2.bind(1, peer.m_walletID);
-
-        const char* updateReq = "UPDATE " PEERS_NAME " SET address=?2, label=?3 WHERE walletID=?1;";
-        const char* insertReq = "INSERT INTO " PEERS_NAME " (" ENUM_PEER_FIELDS(LIST, COMMA, ) ") VALUES(" ENUM_PEER_FIELDS(BIND_LIST, COMMA, ) ");";
-
-        sqlite::Statement stm(_db, stm2.step() ? updateReq : insertReq);
-        int colIdx = 0;
-        ENUM_PEER_FIELDS(STM_BIND_LIST, NOSEP, peer);
-        stm.step();
-
-        trans.commit();
-    }
-
-    boost::optional<TxPeer> WalletDB::getPeer(const WalletID& peerID)
-    {
-        sqlite::Statement stm(_db, "SELECT * FROM " PEERS_NAME " WHERE walletID=?1;");
-        stm.bind(1, peerID);
-        if (stm.step())
-        {
-            TxPeer peer = {};
-            int colIdx = 0;
-            ENUM_PEER_FIELDS(STM_GET_LIST, NOSEP, peer);
-            return peer;
-        }
-        return boost::optional<TxPeer>{};
-    }
-
-    void WalletDB::clearPeers()
-    {
-        sqlite::Statement stm(_db, "DELETE FROM " PEERS_NAME ";");
-        stm.step();
-    }
-
     std::vector<WalletAddress> WalletDB::getAddresses(bool own)
     {
         vector<WalletAddress> res;
@@ -1895,6 +1854,72 @@ namespace beam
         }
     }
 
+    Amount WalletDB::getAvailable()
+    {
+        auto currentHeight = getCurrentHeight();
+        const char* req = "SELECT SUM(amount) FROM " STORAGE_NAME " WHERE status = ?1 AND maturity <= ?2;";
+        sqlite::Statement stm(_db, req);
+        stm.bind(1, Coin::Available);
+        stm.bind(2, currentHeight);
+
+        Amount result = 0;
+
+        if (stm.step())
+        {
+            stm.get(0, result);
+        }
+        return result;
+    }
+
+    Amount WalletDB::getAvailableByType(Key::Type keyType)
+    {
+        auto currentHeight = getCurrentHeight();
+        const char* req = "SELECT SUM(amount) FROM " STORAGE_NAME " WHERE status = ?1 AND type = ?2 AND maturity <= ?3;";
+        sqlite::Statement stm(_db, req);
+        stm.bind(1, Coin::Available);
+        stm.bind(2, keyType);
+        stm.bind(3, currentHeight);
+
+        Amount result = 0;
+
+        if (stm.step())
+        {
+            stm.get(0, result);
+        }
+        return result;
+    }
+
+    Amount WalletDB::getTotal(Coin::Status status)
+    {
+        const char* req = "SELECT SUM(amount) FROM " STORAGE_NAME " WHERE status = ?1;";
+        sqlite::Statement stm(_db, req);
+        stm.bind(1, status);
+
+        Amount result = 0;
+
+        if (stm.step())
+        {
+            stm.get(0, result);
+        }
+        return result;
+    }
+    
+    Amount WalletDB::getTotalByType(Coin::Status status, Key::Type keyType)
+    {
+        const char* req = "SELECT SUM(amount) FROM " STORAGE_NAME " WHERE status = ?1 AND type = ?2;";
+        sqlite::Statement stm(_db, req);
+        stm.bind(1, status);
+        stm.bind(2, keyType);
+
+        Amount result = 0;
+
+        if (stm.step())
+        {
+            stm.get(0, result);
+        }
+        return result;
+    }
+
     bool WalletDB::History::Enum(IWalker& w, const Height* pBelow)
     {
         const char* req = pBelow ?
@@ -2029,71 +2054,6 @@ namespace beam
             ECC::Scalar s;
             value.Export(s);
             return toByteBuffer(s);
-        }
-
-        Amount getAvailable(beam::IWalletDB::Ptr walletDB)
-        {
-            auto currentHeight = walletDB->getCurrentHeight();
-            Amount total = 0;
-            walletDB->visit([&total, &currentHeight](const Coin& c)->bool
-            {
-                Height lockHeight = c.m_maturity;
-
-                if (c.m_status == Coin::Available
-                    && lockHeight <= currentHeight)
-                {
-                    total += c.m_ID.m_Value;
-                }
-                return true;
-            });
-            return total;
-        }
-
-        Amount getAvailableByType(beam::IWalletDB::Ptr walletDB, Coin::Status status, Key::Type keyType)
-        {
-            auto currentHeight = walletDB->getCurrentHeight();
-            Amount total = 0;
-            walletDB->visit([&total, &currentHeight, &status, &keyType](const Coin& c)->bool
-            {
-                Height lockHeight = c.m_maturity;
-
-                if (c.m_status == status
-                    && c.m_ID.m_Type == keyType
-                    && lockHeight <= currentHeight)
-                {
-                    total += c.m_ID.m_Value;
-                }
-                return true;
-            });
-            return total;
-        }
-
-        Amount getTotal(beam::IWalletDB::Ptr walletDB, Coin::Status status)
-        {
-            Amount total = 0;
-            walletDB->visit([&total, &status](const Coin& c)->bool
-            {
-                if (c.m_status == status)
-                {
-                    total += c.m_ID.m_Value;
-                }
-                return true;
-            });
-            return total;
-        }
-
-        Amount getTotalByType(beam::IWalletDB::Ptr walletDB, Coin::Status status, Key::Type keyType)
-        {
-            Amount total = 0;
-            walletDB->visit([&total, &status, &keyType](const Coin& c)->bool
-            {
-                if (c.m_status == status && c.m_ID.m_Type == keyType)
-                {
-                    total += c.m_ID.m_Value;
-                }
-                return true;
-            });
-            return total;
         }
 
         WalletAddress createAddress(beam::IWalletDB::Ptr walletDB)

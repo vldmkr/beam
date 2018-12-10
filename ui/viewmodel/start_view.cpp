@@ -68,12 +68,6 @@ namespace
 #endif
     };
 
-    QString chooseRandomNode()
-    {
-        srand(time(0));
-        return QString(Testnet[rand() % (sizeof(Testnet) / sizeof(Testnet[0]))]);
-    }
-
     const QChar PHRASES_SEPARATOR = ';';
 }
 
@@ -224,6 +218,12 @@ bool StartViewModel::getIsRunLocalNode() const
     return AppModel::getInstance()->getSettings().getRunLocalNode();
 }
 
+QString StartViewModel::chooseRandomNode() const
+{
+    srand(time(0));
+    return QString(Testnet[rand() % (sizeof(Testnet) / sizeof(Testnet[0]))]);
+}
+
 int StartViewModel::getLocalPort() const
 {
     return AppModel::getInstance()->getSettings().getLocalNodePort();
@@ -239,7 +239,13 @@ QString StartViewModel::getRemoteNodeAddress() const
     return AppModel::getInstance()->getSettings().getNodeAddress();
 }
 
-void StartViewModel::setupLocalNode(int port, int miningThreads)
+QString StartViewModel::getLocalNodePeer() const
+{
+    auto peers = AppModel::getInstance()->getSettings().getLocalNodePeers();
+    return !peers.empty() ? peers.first() : "";
+}
+
+void StartViewModel::setupLocalNode(int port, int miningThreads, const QString& localNodePeer)
 {
     auto& settings = AppModel::getInstance()->getSettings();
 #ifdef BEAM_USE_GPU
@@ -259,7 +265,7 @@ void StartViewModel::setupLocalNode(int port, int miningThreads)
     settings.setLocalNodePort(port);
     settings.setRunLocalNode(true);
     QStringList peers;
-    peers.push_back(chooseRandomNode());
+    peers.push_back(localNodePeer);
     settings.setLocalNodePeers(peers);
 }
 
@@ -379,7 +385,7 @@ bool StartViewModel::hasSupportedGpu()
 #endif
 }
 
-bool StartViewModel::createWallet(const QString& pass)
+bool StartViewModel::createWallet()
 {
     if (m_isRecoveryMode)
     {
@@ -394,7 +400,7 @@ bool StartViewModel::createWallet(const QString& pass)
 
     SecString secretSeed;
     secretSeed.assign(buf.data(), buf.size());
-    SecString sectretPass = pass.toStdString();
+    SecString sectretPass = m_password;
     return AppModel::getInstance()->createWallet(secretSeed, sectretPass);
 }
 
@@ -403,4 +409,9 @@ bool StartViewModel::openWallet(const QString& pass)
     // TODO make this secure
     SecString secretPass = pass.toStdString();
     return AppModel::getInstance()->openWallet(secretPass);
+}
+
+void StartViewModel::setPassword(const QString& pass)
+{
+    m_password = pass.toStdString();
 }
