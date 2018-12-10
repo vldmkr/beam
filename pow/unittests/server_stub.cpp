@@ -29,7 +29,7 @@ Block::PoW POW;
 static const unsigned TIMER_MSEC = 280000;
 io::Timer::Ptr feedJobsTimer;
 
-void got_new_block();
+void got_new_block(int);
 
 void gen_new_job() {
     ECC::GenRandom(&POW.m_Nonce, Block::PoW::NonceType::nBytes);
@@ -48,7 +48,7 @@ void gen_new_job() {
     feedJobsTimer->start(TIMER_MSEC, false, &gen_new_job);
 }
 
-void got_new_block() {
+void got_new_block(int) {
     feedJobsTimer->cancel();
     if (server) {
         std::string blockId;
@@ -78,7 +78,7 @@ void find_certificates(IExternalPOW::Options& o) {
 }
 
 void run_without_node() {
-    io::Address listenTo = io::Address::localhost().port(20000);
+    io::Address listenTo = io::Address().port(20000);
     io::Reactor::Ptr reactor = io::Reactor::create();
     io::Reactor::Scope scope(*reactor);
     io::Reactor::GracefulIntHandler gih(*reactor);

@@ -592,7 +592,7 @@ private:
 		void OnRefresh(uint32_t iIdx);
 		void OnRefreshExternal();
 		void OnMined();
-		void OnMinedExternal();
+		void OnMinedExternal(int);
 		void OnFinalizerChanged(Peer*);
 
 		void HardAbortSafe();

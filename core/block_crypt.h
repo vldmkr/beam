@@ -404,7 +404,7 @@ namespace beam
 			bool Solve(const void* pInput, uint32_t nSizeInput, const Cancel& = [](bool) { return false; });
 
 #if defined (BEAM_USE_GPU)
-            bool SolveGPU(const void* pInput, uint32_t nSizeInput, const Cancel& = [](bool) { return false; });
+            bool SolveGPU(const void* pInput, uint32_t nSizeInput, const Cancel& = [](bool) { return false; }, int deviceId=0);
 #endif
 
 		private:

@@ -35,7 +35,7 @@ namespace beam {
 static const unsigned RECONNECT_TIMEOUT = 1000;
 
 class StratumClient : public stratum::ParserCallback {
-    std::unique_ptr<IExternalPOW> _miner;
+    std::vector<std::unique_ptr<IExternalPOW>> _miners;
     io::Reactor& _reactor;
     io::Address _serverAddress;
     std::string _apiKey;
@@ -49,7 +49,7 @@ class StratumClient : public stratum::ParserCallback {
     bool _tls;
 
 public:
-    StratumClient(io::Reactor& reactor, const io::Address& serverAddress, std::string apiKey, bool no_tls) :
+    StratumClient(io::Reactor& reactor, const io::Address& serverAddress, std::string apiKey, bool no_tls, int numDevices) :
         _reactor(reactor),
         _serverAddress(serverAddress),
         _apiKey(std::move(apiKey)),
@@ -62,7 +62,8 @@ public:
         _tls(!no_tls)
     {
         _timer->start(0, false, BIND_THIS_MEMFN(on_reconnect));
-        _miner = IExternalPOW::create_local_solver();
+        for (int i=0; i<numDevices; ++i)
+            _miners.push_back(IExternalPOW::create_local_solver(i));
     }
 
 private:
@@ -88,11 +89,13 @@ private:
 
         if (!fill_job_info(job)) return false;
 
-        _miner->new_job(
+        for (auto& miner : _miners) {
+            miner->new_job(
             _lastJobID, _lastJobInput, pow,
             BIND_THIS_MEMFN(on_block_found),
             []() { return false; }
-        );
+            );
+        }
 
         return true;
     }
@@ -105,9 +108,16 @@ private:
         return true;
     }
 
-    void on_block_found() {
+    void on_block_found(int deviceId) {
+        auto from = (size_t)deviceId;
+        if (from >= _miners.size()) {
+            return;
+        }
+
+        auto& miner = _miners[from];
+
         std::string jobID;
-        _miner->get_last_found_block(jobID, _lastFoundBlock);
+        miner->get_last_found_block(jobID, _lastFoundBlock);
         if (jobID != _lastJobID) {
             LOG_INFO() << "solution expired" << TRACE(jobID);
             return;
@@ -222,6 +232,7 @@ private:
 struct Options {
     std::string apiKey;
     std::string serverAddress;
+    int numDevices=1;
     bool no_tls=false;
     int logLevel=LOG_LEVEL_DEBUG;
     unsigned logRotationPeriod = 3*60*60*1000; // 3 hours
@@ -260,7 +271,7 @@ int main(int argc, char* argv[]) {
         logRotateTimer->start(
             options.logRotationPeriod, true, []() { Logger::get()->rotate(); }
         );
-        StratumClient client(*reactor, connectTo, options.apiKey, options.no_tls);
+        StratumClient client(*reactor, connectTo, options.apiKey, options.no_tls, options.numDevices);
         reactor->run();
         LOG_INFO() << "stopping...";
     } catch (const std::exception& e) {
@@ -280,6 +291,7 @@ bool parse_cmdline(int argc, char* argv[], Options& o) {
     ("help", "list of all options")
     ("server", po::value<std::string>(&o.serverAddress)->required(), "server address")
     ("key", po::value<std::string>(&o.apiKey)->required(), "api key")
+    ("devices", po::value<int>(&o.numDevices)->default_value(1), "# of threads or CUDA devices")
     ("no-tls", po::bool_switch(&o.no_tls)->default_value(false), "disable tls")
     ;
 
@@ -306,6 +318,8 @@ bool parse_cmdline(int argc, char* argv[], Options& o) {
         }
 
         vm.notify();
+
+        if (o.numDevices <= 0) o.numDevices = 1;
 
         return true;
     } catch (const po::error& ex) {

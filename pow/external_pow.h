@@ -20,7 +20,7 @@ namespace beam {
 
 class IExternalPOW {
 public:
-    using BlockFound = std::function<void()>;
+    using BlockFound = std::function<void(int minerId)>;
     using CancelCallback = std::function<bool()>;
 
     struct Options {
@@ -33,7 +33,7 @@ public:
     static std::unique_ptr<IExternalPOW> create(const Options& o, io::Reactor& reactor, io::Address listenTo);
 
     // creates local solver (stub)
-    static std::unique_ptr<IExternalPOW> create_local_solver();
+    static std::unique_ptr<IExternalPOW> create_local_solver(int deviceId=0);
 
     virtual ~IExternalPOW() = default;
 
