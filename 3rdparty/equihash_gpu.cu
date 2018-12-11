@@ -1071,7 +1071,7 @@ struct GpuContext
 
 }
 
-bool EquihashGpu::solve(const blake2b_state& state, const IsValid& valid, const Cancel& cancel, int deviceId=0)
+bool EquihashGpu::solve(const blake2b_state& state, const IsValid& valid, const Cancel& cancel, int deviceId)
 {
     return GpuContext(state, deviceId).solve(valid, cancel);
 }
