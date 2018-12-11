@@ -127,7 +127,7 @@ bool Server::on_solution(uint64_t from, const Solution& sol) {
     sol.fill_pow(_job.pow);
 
     LOG_INFO() << STS << "solution to " << sol.id << " from " << io::Address::from_u64(from);
-    _job.onBlockFound();
+    _job.onBlockFound(0);
     return true;
 }
 

@@ -959,10 +959,10 @@ static void compress_solution(const uint32_t* sol, uint8_t* csol)
 
 struct GpuContext
 {
-    GpuContext(const blake2b_state& state)
+    GpuContext(const blake2b_state& state, int deviceId=0)
         : threadsperblock(64)/// TODO: get it somewhere
         , totalblocks(20 * 7)/// TODO: get it somewhere
-        , device_id(0)
+        , device_id(deviceId)
         , eq(new equi(threadsperblock * totalblocks))
         , solutionBuf(sizeof(proof) * MAXSOLS + 4096)
     {
@@ -1071,7 +1071,7 @@ struct GpuContext
 
 }
 
-bool EquihashGpu::solve(const blake2b_state& state, const IsValid& valid, const Cancel& cancel)
+bool EquihashGpu::solve(const blake2b_state& state, const IsValid& valid, const Cancel& cancel, int deviceId)
 {
-    return GpuContext(state).solve(valid, cancel);
+    return GpuContext(state, deviceId).solve(valid, cancel);
 }

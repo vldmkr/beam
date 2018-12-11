@@ -9,7 +9,7 @@ namespace beam {
 
 class ExternalPOWStub : public IExternalPOW {
 public:
-    ExternalPOWStub() : _seed(0), _changed(false), _stop(false) {
+    explicit ExternalPOWStub(int deviceId) : _deviceId(deviceId), _seed(0), _changed(false), _stop(false) {
         ECC::GenRandom(&_seed, 8);
         _thread.start(BIND_THIS_MEMFN(thread_func));
     }
@@ -17,7 +17,7 @@ public:
     ~ExternalPOWStub() override {
         stop();
         _thread.join();
-        LOG_INFO() << "Done";
+        LOG_INFO() << "device #" << _deviceId << ": done";
     }
 
 private:
@@ -82,38 +82,38 @@ private:
     }
 
     void thread_func() {
-#if defined (BEAM_USE_GPU)
-        auto SolveFn = &Block::PoW::SolveGPU;
-#else
-        auto SolveFn = &Block::PoW::Solve;
-#endif
-
         Job job;
         Merkle::Hash hv;
 
         auto cancelFn = [this, &job](bool)->bool {
             if (_changed.load()) {
-                LOG_INFO() << "job id=" << job.jobID << " cancelled";
+                LOG_INFO() << "device #" << _deviceId << ": job id=" << job.jobID << " cancelled";
                 return true;
             }
             return false;
         };
 
         while (get_new_job(job)) {
-            LOG_INFO() << "solving job id=" << job.jobID
+            LOG_INFO() << "device #" << _deviceId << ": solving job id=" << job.jobID
                        << " with nonce=" << job.pow.m_Nonce << " and difficulty=" << job.pow.m_Difficulty;
 
-            if ( (job.pow.*SolveFn) (job.input.m_pData, Merkle::Hash::nBytes, cancelFn)) {
+#if defined (BEAM_USE_GPU)
+            if (job.pow.SolveGPU(job.input.m_pData, Merkle::Hash::nBytes, cancelFn, _deviceId))
+#else
+            if (job.pow.Solve(job.input.m_pData, Merkle::Hash::nBytes, cancelFn))
+#endif
+            {
                 {
                     std::lock_guard<std::mutex> lk(_mutex);
                     _lastFoundBlock = job.pow;
                     _lastFoundBlockID = job.jobID;
                 }
-                job.callback();
+                job.callback(_deviceId);
             }
         }
     }
 
+    const int _deviceId;
     Job _currentJob;
     std::string _lastFoundBlockID;
     Block::PoW _lastFoundBlock;
@@ -125,8 +125,8 @@ private:
     std::condition_variable _cond;
 };
 
-std::unique_ptr<IExternalPOW> IExternalPOW::create_local_solver() {
-    return std::make_unique<ExternalPOWStub>();
+std::unique_ptr<IExternalPOW> IExternalPOW::create_local_solver(int deviceId) {
+    return std::make_unique<ExternalPOWStub>(deviceId);
 }
 
 } //namespace

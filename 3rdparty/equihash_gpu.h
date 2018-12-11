@@ -28,5 +28,6 @@ public:
 
     bool solve(const blake2b_state& state
         , const IsValid& valid
-        , const Cancel& cancel);
+        , const Cancel& cancel
+        , int deviceId);
 };

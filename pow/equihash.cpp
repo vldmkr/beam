@@ -50,7 +50,7 @@ struct Block::PoW::Helper
 
 #if defined (BEAM_USE_GPU)
 
-    bool Block::PoW::SolveGPU(const void* pInput, uint32_t nSizeInput, const Cancel& fnCancel)
+    bool Block::PoW::SolveGPU(const void* pInput, uint32_t nSizeInput, const Cancel& fnCancel, int deviceId)
     {
         Helper hlp;
         EquihashGpu gpu;
@@ -73,7 +73,7 @@ struct Block::PoW::Helper
         {
             hlp.Reset(pInput, nSizeInput, m_Nonce);
 
-            if (gpu.solve(hlp.m_Blake, fnValid, fnCancelInternal))
+            if (gpu.solve(hlp.m_Blake, fnValid, fnCancelInternal, deviceId))
                 break;
 
             if (fnCancel(true))
