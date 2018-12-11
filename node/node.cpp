@@ -3133,7 +3133,7 @@ void Node::Miner::OnRefreshExternal()
 	m_externalPOW->new_job(std::to_string(++m_jobID), hv, m_savedState.m_PoW, BIND_THIS_MEMFN(OnMinedExternal), fnCancel);
 }
 
-void Node::Miner::OnMinedExternal()
+void Node::Miner::OnMinedExternal(int)
 {
 	if (!m_externalPOW) return;
 
