@@ -73,7 +73,7 @@ struct Block::PoW::Helper
         {
             hlp.Reset(pInput, nSizeInput, m_Nonce);
 
-            if (gpu.solve(hlp.m_Blake, fnValid, fnCancelInternal))
+            if (gpu.solve(hlp.m_Blake, fnValid, fnCancelInternal, deviceId))
                 break;
 
             if (fnCancel(true))
