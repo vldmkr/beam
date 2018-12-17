@@ -3,6 +3,15 @@ language: cpp
 git:
   depth: false
 
+addons:
+  artifacts: true
+  paths:
+  - $HOME/build/BeamMW/beam/pack/beam-pack-$BEAM_VERSION.tar.gz
+  - $HOME/build/BeamMW/beam/beam/beam-node-$BEAM_VERSION.tar.gz
+  - $HOME/build/BeamMW/beam/beam/beam-wallet-cli-$BEAM_VERSION.tar.gz
+  - $HOME/build/BeamMW/beam/$BEAM_WALLET_UI_IN
+  target_paths:
+  - /$TRAVIS_BRANCH/$(date +%Y.%m.%d)/$BUILD_TYPE/$OS_FOLDER
 matrix:
   include:
     - os: osx
