@@ -3,6 +3,9 @@ language: cpp
 git:
   depth: false
 
+addons:
+  artifacts: true
+
 matrix:
   include:
     - os: osx
