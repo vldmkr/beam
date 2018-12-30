@@ -88,8 +88,9 @@ on_success:
 
     set BUILDS_SERVER_PATH=%BUILD_SERVER%/files/%APPVEYOR_REPO_BRANCH%/%DATE%/Release/win 
     
-    echo %BUILD_SERVER%
-    echo %BUILDS_SERVER_PATH%
+    dirc:/projects/beam/beam/%BUILD_CONFIG%
+    
+    curl --retry 3 --ftp-create-dirs -T "c:/projects/beam/beam/%BUILD_CONFIG%/beam-node-%BEAM_VERSION%.zip" %BUILDS_SERVER_PATH%/
 
 artifacts:
   - path: beam-node-%BEAM_VERSION%.zip
