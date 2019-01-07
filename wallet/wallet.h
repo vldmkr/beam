@@ -57,6 +57,8 @@ namespace beam
     public:
         using TxCompletedAction = std::function<void(const TxID& tx_id)>;
 
+        bool NewTx = true;
+
         Wallet(IWalletDB::Ptr walletDB, TxCompletedAction&& action = TxCompletedAction());
         virtual ~Wallet();
 

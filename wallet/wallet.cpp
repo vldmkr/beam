@@ -370,7 +370,7 @@ namespace beam
 
     void Wallet::OnRequestComplete(MyRequestTransaction& r)
     {
-        LOG_DEBUG() << r.m_TxID << (r.m_Res.m_Value ? " has registered" : " has failed to register");
+        LOG_INFO() << r.m_TxID << (r.m_Res.m_Value ? " has registered" : " has failed to register");
         
         auto it = m_transactions.find(r.m_TxID);
         if (it != m_transactions.end())
@@ -781,7 +781,7 @@ namespace beam
 
     void Wallet::register_tx(const TxID& txId, Transaction::Ptr data)
     {
-        LOG_VERBOSE() << txId << " sending tx for registration";
+        LOG_INFO() << txId << " sending transaction to node";
 
 #ifndef NDEBUG
         TxBase::Context ctx;
@@ -859,7 +859,11 @@ namespace beam
         switch (type)
         {
         case TxType::Simple:
-             return make_shared<SimpleTransaction>(*this, m_WalletDB, id);
+            if (NewTx)
+            {
+                return make_shared<SimpleTransaction>(*this, m_WalletDB, id);
+            }
+            return make_shared<SimpleTransactionOld>(*this, m_WalletDB, id);
         case TxType::AtomicSwap:
             return make_shared<AtomicSwapTransaction>(*this, m_WalletDB, id);
         }

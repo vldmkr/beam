@@ -173,6 +173,36 @@ namespace beam { namespace wallet
         void UpdateImpl() override;
         bool ShouldNotifyAboutChanges(TxParameterID paramID) const override;
         void SendInvitation(const TxBuilder& builder, bool isSender);
+        void ConfirmInvitation(const TxBuilder& builder, bool sendUtxos);
+        void ConfirmTransaction(const TxBuilder& builder, bool sendUtxos);
+        void NotifyTransactionRegistered();
+        bool IsSelfTx() const;
+        State GetState() const;
+    };
+
+    class SimpleTransactionOld : public BaseTransaction
+    {
+        enum State : uint8_t
+        {
+            Initial,
+            Invitation,
+            PeerConfirmation,
+            
+            InvitationConfirmation,
+            Registration,
+
+            KernelConfirmation,
+            OutputsConfirmation
+        };
+    public:
+        SimpleTransactionOld(INegotiatorGateway& gateway
+                        , beam::IWalletDB::Ptr walletDB
+                        , const TxID& txID);
+    private:
+        TxType GetType() const override;
+        void UpdateImpl() override;
+        bool ShouldNotifyAboutChanges(TxParameterID paramID) const override;
+        void SendInvitation(const TxBuilder& builder, bool isSender);
         void ConfirmInvitation(const TxBuilder& builder);
         void ConfirmTransaction(const TxBuilder& builder);
         void NotifyTransactionRegistered();
