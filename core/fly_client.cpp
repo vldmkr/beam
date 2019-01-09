@@ -122,7 +122,7 @@ void FlyClient::NetworkStd::Connection::OnConnectedSecure()
 
 void FlyClient::NetworkStd::Connection::OnDisconnect(const DisconnectReason& dr)
 {
-	LOG_INFO() << "FlyClient - OnDisconnect" << dr;
+	LOG_INFO() << "FlyClient - OnDisconnect " << dr;
 
     m_This.OnConnectionFailed(m_iIndex, dr);
 	ResetAll();

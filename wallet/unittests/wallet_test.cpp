@@ -323,6 +323,10 @@ struct TestWalletRig
         m_WalletNetworkViaBbs.AddOwnAddress(wa);
     }
 
+    ~TestWalletRig() {
+        LOG_INFO() << __FUNCTION__;
+    }
+
     vector<Coin> GetCoins()
     {
         vector<Coin> coins;
@@ -752,13 +756,15 @@ public:
     }
 
     ~TestNode() {
+        LOG_INFO() << __FUNCTION__;
         KillAll();
     }
 
     void KillAll()
     {
         while (!m_lstClients.empty())
-            DeleteClient(&m_lstClients.front());
+            //DeleteClient(&m_lstClients.front());
+            DeleteClient(*m_lstClients.begin());
     }
 
     TestBlockchain m_Blockchain;
@@ -769,7 +775,7 @@ public:
 
         for (ClientList::iterator it = m_lstClients.begin(); m_lstClients.end() != it; it++)
         {
-            Client& c = *it;
+            Client& c = *(*it);
             if (c.IsSecureOut())
                 c.SendTip();
         }
@@ -778,7 +784,7 @@ private:
 
     struct Client
         :public proto::NodeConnection
-        ,public boost::intrusive::list_base_hook<>
+ //       ,public boost::intrusive::list_base_hook<>
     {
         TestNode& m_This;
         bool m_Subscribed;
@@ -787,6 +793,10 @@ private:
             : m_This(n)
             , m_Subscribed(false)
         {
+        }
+
+        virtual ~Client() {
+            LOG_INFO() << "~Client";
         }
 
 
@@ -876,11 +886,13 @@ private:
 
             m_This.m_bbs.push_back(msg);
 
+            LOG_INFO() << "OnMsg - before loop";
             for (ClientList::iterator it = m_This.m_lstClients.begin(); m_This.m_lstClients.end() != it; it++)
             {
-                if (it.pointed_node() != this)
+                //if (it.pointed_node() != this)
+                if (*it != this)
                 {
-                    Client& c = *it;
+                    Client& c = *(*it);
                     if (c.m_Subscribed)
                     {
 						LOG_INFO() << "bbs msg sent";
@@ -888,6 +900,7 @@ private:
                     }
                 }
             }
+            LOG_INFO() << "OnMsg - after loop";
         }
 
         void OnMsg(proto::Ping&& msg) override
@@ -905,7 +918,7 @@ private:
 
         void OnDisconnect(const DisconnectReason& r) override
         {
-			LOG_INFO() << "TestNode - OnDisconnect" << r;
+			LOG_INFO() << "TestNode - OnDisconnect " << r;
 
             switch (r.m_Type)
             {
@@ -922,14 +935,17 @@ private:
         }
     };
 
-    typedef boost::intrusive::list<Client> ClientList;
+//    typedef boost::intrusive::list<Client> ClientList;
+    typedef std::set<Client*> ClientList;
     ClientList m_lstClients;
 
     std::vector<proto::BbsMsg> m_bbs;
 
     void DeleteClient(Client* client)
     {
-        m_lstClients.erase(ClientList::s_iterator_to(*client));
+        LOG_INFO() << "TestNode - DeleteClient";
+        //m_lstClients.erase(ClientList::s_iterator_to(*client));
+        m_lstClients.erase(client);
         delete client;
     }
 
@@ -945,10 +961,13 @@ private:
 				LOG_INFO() << "TestNode - OnAccepted";
 
                 Client* p = new Client(get_ParentObj());
-                get_ParentObj().m_lstClients.push_back(*p);
-
                 p->Accept(std::move(newStream));
                 p->SecureConnect();
+
+                //get_ParentObj().m_lstClients.push_back(*p);
+                get_ParentObj().m_lstClients.insert(p);
+
+
             }
         }
     } m_Server;
@@ -1175,7 +1194,10 @@ void TestP2PWalletNegotiationST()
     
     // check coins
     newSenderCoins = sender.GetCoins();
+    cout << ".\n";
+
     newReceiverCoins = receiver.GetCoins();
+    cout << "..\n";
 
     // no coins 
     WALLET_CHECK(newSenderCoins.size() == 5);
@@ -1183,9 +1205,13 @@ void TestP2PWalletNegotiationST()
 
     // Tx history check. New failed tx should be added to sender
     sh = sender.m_WalletDB->getTxHistory();
+    cout << "...\n";
     WALLET_CHECK(sh.size() == 3);
+
     rh = receiver.m_WalletDB->getTxHistory();
+    cout << "....\n";
     WALLET_CHECK(rh.size() == 2);
+
     stx = sender.m_WalletDB->getTx(txId);
     WALLET_CHECK(stx.is_initialized());
     rtx = receiver.m_WalletDB->getTx(txId);
@@ -1194,6 +1220,8 @@ void TestP2PWalletNegotiationST()
     WALLET_CHECK(stx->m_amount == 6);
     WALLET_CHECK(stx->m_status == TxStatus::Failed);
     WALLET_CHECK(stx->m_sender == true);
+
+    cout << "......\n";
 }
 
 void TestP2PWalletReverseNegotiationST()
@@ -1647,6 +1675,7 @@ int main()
     Rules::get().UpdateChecksum();
 
     TestP2PWalletNegotiationST();
+/*
     TestP2PWalletReverseNegotiationST();
 
     TestWalletNegotiation(CreateWalletDB<TestWalletDB>(), CreateWalletDB<TestWalletDB2>());
@@ -1659,7 +1688,7 @@ int main()
     TestTxToHimself();
 
     //TestRollback();
-
+*/
     assert(g_failureCount == 0);
     return WALLET_CHECK_RESULT;
 }
