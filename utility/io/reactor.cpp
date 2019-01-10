@@ -410,6 +410,9 @@ void Reactor::run() {
     _tcpConnectors->cancel_all();
     _pendingWrites->cancel_all();
     _tcpShutdowns->cancel_all();
+
+    // run one cycle to release all closing handles
+    uv_run(&_loop, UV_RUN_NOWAIT);
 }
 
 void Reactor::stop() {

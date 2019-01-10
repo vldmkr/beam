@@ -1053,6 +1053,7 @@ void TestP2PWalletNegotiationST()
         --completedCount;
         if (completedCount == 0)
         {
+            LOG_INFO() << "stopping reactor";
             mainReactor->stop();
             completedCount = 2;
         }

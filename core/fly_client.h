@@ -218,7 +218,8 @@ namespace proto {
 				void SendRequest(RequestBbsMsg&);
 			};
 
-			typedef boost::intrusive::list<Connection> ConnectionList;
+			//typedef boost::intrusive::list<Connection> ConnectionList;
+			typedef std::set<Connection*> ConnectionList;
 			ConnectionList m_Connections;
 
 			typedef std::map<BbsChannel, std::pair<IBbsReceiver*, Timestamp> > BbsSubscriptions;

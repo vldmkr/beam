@@ -30,7 +30,8 @@ void FlyClient::NetworkStd::Connect()
         // force (re) connect
         for (ConnectionList::iterator it = m_Connections.begin(); m_Connections.end() != it; it++)
         {
-            Connection& c = *it;
+            //Connection& c = *it;
+            Connection& c = *(*it);
             if (c.IsLive() && c.IsSecureOut())
                 continue;
 
@@ -54,21 +55,24 @@ void FlyClient::NetworkStd::Connect()
 void FlyClient::NetworkStd::Disconnect()
 {
     while (!m_Connections.empty())
-        delete &m_Connections.front();
+    //    delete &m_Connections.front();
+        delete *m_Connections.begin();
 }
 
 FlyClient::NetworkStd::Connection::Connection(NetworkStd& x, size_t iIndex)
     :m_iIndex(iIndex)
     ,m_This(x)
 {
-    m_This.m_Connections.push_back(*this);
+    //m_This.m_Connections.push_back(*this);
+    m_This.m_Connections.insert(this);
     ResetVars();
 }
 
 FlyClient::NetworkStd::Connection::~Connection()
 {
     ResetInternal();
-    m_This.m_Connections.erase(ConnectionList::s_iterator_to(*this));
+    //m_This.m_Connections.erase(ConnectionList::s_iterator_to(*this));
+    m_This.m_Connections.erase(this);
 
 }
 
@@ -146,8 +150,9 @@ void FlyClient::NetworkStd::Connection::SetTimer(uint32_t timeout_ms)
 
 void FlyClient::NetworkStd::Connection::KillTimer()
 {
-    if (m_pTimer)
-        m_pTimer->cancel();
+    //if (m_pTimer)
+    //    m_pTimer->cancel();
+    m_pTimer.reset();
 }
 
 void FlyClient::NetworkStd::Connection::OnTimer()
@@ -546,7 +551,8 @@ void FlyClient::NetworkStd::Connection::PostChainworkProof(const StateArray& arr
         // if more connections are opened simultaneously - notify them
         for (ConnectionList::iterator it = m_This.m_Connections.begin(); m_This.m_Connections.end() != it; it++)
         {
-            const Connection& c = *it;
+            //const Connection& c = *it;
+            const Connection& c = *(*it);
             if (c.m_pSync)
                 c.m_pSync->m_LowHeight = std::min(c.m_pSync->m_LowHeight, w.m_LowErase - 1);
         }
@@ -566,8 +572,8 @@ void FlyClient::NetworkStd::Connection::PostChainworkProof(const StateArray& arr
 
 void FlyClient::NetworkStd::Connection::PrioritizeSelf()
 {
-    m_This.m_Connections.erase(ConnectionList::s_iterator_to(*this));
-    m_This.m_Connections.push_front(*this);
+//TODO    m_This.m_Connections.erase(ConnectionList::s_iterator_to(*this));
+    //m_This.m_Connections.push_front(*this);
 }
 
 void FlyClient::INetwork::PostRequest(Request& r, Request::IHandler& h)
@@ -592,7 +598,8 @@ void FlyClient::NetworkStd::OnNewRequests()
 {
     for (ConnectionList::iterator it = m_Connections.begin(); m_Connections.end() != it; it++)
     {
-        Connection& c = *it;
+//        Connection& c = *it;
+        Connection& c = *(*it);
         if (c.IsLive() && c.IsSecureOut())
         {
             c.AssignRequests();
@@ -838,8 +845,8 @@ void FlyClient::NetworkStd::BbsSubscribe(BbsChannel ch, Timestamp ts, IBbsReceiv
     msg.m_On = (NULL != p);
 
     for (ConnectionList::iterator it2 = m_Connections.begin(); m_Connections.end() != it2; it2++)
-        if (it2->IsLive() && it2->IsSecureOut())
-            it2->Send(msg);
+        if ((*it2)->IsLive() && (*it2)->IsSecureOut())
+            (*it2)->Send(msg);
 }
 
 void FlyClient::NetworkStd::Connection::OnMsg(BbsMsgV0&& msg0)
