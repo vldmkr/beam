@@ -25,15 +25,16 @@
 
 namespace beam
 {
-	struct INodeObserver
-	{
-		virtual void OnSyncProgress(int done, int total) = 0;
-		virtual void OnStateChanged() {}
-	};
 
 struct Node
 {
 	static const uint16_t s_PortDefault = 31744; // whatever
+
+	struct IObserver
+	{
+		virtual void OnSyncProgress() = 0;
+		virtual void OnStateChanged() {}
+	};
 
 	struct Config
 	{
@@ -58,9 +59,10 @@ struct Node
 			uint32_t m_TopPeersUpd_ms = 1000 * 60 * 10; // once in 10 minutes
 			uint32_t m_PeersUpdate_ms	= 1000; // reconsider every second
 			uint32_t m_PeersDbFlush_ms = 1000 * 60; // 1 minute
-			uint32_t m_BbsMessageTimeout_s	= 3600 * 24; // 1 day
-			uint32_t m_BbsMessageMaxAhead_s	= 3600 * 2; // 2 hours
+			uint32_t m_BbsMessageTimeout_s	= 3600 * 12; // 1/2 day
+			uint32_t m_BbsMessageMaxAhead_s	= 60 * 15; // 15 minutes
 			uint32_t m_BbsCleanupPeriod_ms = 3600 * 1000; // 1 hour
+			uint32_t m_BbsChannelUpdate_ms = 60 * 5; // 5 minutes
 		} m_Timeout;
 
 		uint32_t m_MaxConcurrentBlocksRequest = 5;
@@ -72,6 +74,15 @@ struct Node
 		// 0: single threaded
 		// negative: number of cores minus number of mining threads.
 		int m_VerificationThreads = 0;
+
+		bool m_Bbs = true;
+
+		struct BandwidthCtl
+		{
+			size_t m_Chocking = 1024 * 1024;
+			size_t m_Drown    = 1024*1024 * 20;
+
+		} m_BandwidthCtl;
 
 		struct HistoryCompression
 		{
@@ -97,7 +108,8 @@ struct Node
 			// during sync phase we try to pick the best peer to sync from.
 			// Our logic: decide when either examined enough peers, or timeout expires
 			uint32_t m_SrcPeers = 5;
-			uint32_t m_Timeout_ms = 10000;
+			uint32_t m_Timeout_ms = 10 * 1000; // timeout since at least 1 tip is received
+			uint32_t m_TimeoutHi_ms = 60 * 1000; // timeout since at least 1 peer connected.
 
 			bool m_ForceResync = false;
 			bool m_NoFastSync = false;
@@ -119,7 +131,7 @@ struct Node
 
 		} m_Dandelion;
 
-		INodeObserver* m_Observer = nullptr;
+		IObserver* m_Observer = nullptr;
 
 	} m_Cfg; // must not be changed after initialization
 
@@ -128,16 +140,12 @@ struct Node
 		// There following Ptrs may point to the same object.
 
 		Key::IKdf::Ptr m_pGeneric; // used for internal nonce generation. Auto-generated from system random if not specified
-
+		Key::IPKdf::Ptr m_pOwner; // used for wallet authentication and UTXO tagging (this is the master view key)
 		Key::IKdf::Ptr m_pMiner; // if not set - offline mining would be impossible
-		Key::Index m_MinerIdx = 0;
+		Key::IKdf::Ptr m_pDummy;
 
-		Key::IPKdf::Ptr m_pOwner; // used for wallet authentication
+		Key::Index m_nMinerSubIndex = 0;
 
-		typedef std::pair<Key::Index, Key::IPKdf::Ptr> Viewer;
-		std::vector<Viewer> m_vMonitored;
-
-		// legacy. To be removed!
 		void InitSingleKey(const ECC::uintBig& seed);
 		void SetSingleKey(const Key::IKdf::Ptr&);
 
@@ -149,27 +157,36 @@ struct Node
 
 	NodeProcessor& get_Processor() { return m_Processor; } // for tests only!
 
+	struct SyncStatus
+	{
+		static const uint32_t s_WeightHdr = 1;
+		static const uint32_t s_WeightBlock = 8;
+
+		// in units of Height, but different.
+		Height m_Done;
+		Height m_Total;
+
+		bool operator == (const SyncStatus&) const;
+
+	} m_SyncStatus;
+
+	bool m_UpdatedFromPeers = false;
+
 private:
 
 	struct Processor
 		:public NodeProcessor
 	{
 		// NodeProcessor
-		void RequestData(const Block::SystemState::ID&, bool bBlock, const PeerID* pPreferredPeer) override;
+		void RequestData(const Block::SystemState::ID&, bool bBlock, const PeerID* pPreferredPeer, Height hTarget) override;
 		void OnPeerInsane(const PeerID&) override;
 		void OnNewState() override;
 		void OnRolledBack() override;
 		bool VerifyBlock(const Block::BodyBase&, TxBase::IReader&&, const HeightRange&) override;
 		void AdjustFossilEnd(Height&) override;
-		void OnStateData() override;
-		void OnBlockData() override;
-		void OnUpToDate() override;
 		bool OpenMacroblock(Block::BodyBase::RW&, const NodeDB::StateID&) override;
 		void OnModified() override;
 		bool EnumViewerKeys(IKeyWalker&) override;
-
-		void ReportProgress();
-		void ReportNewState();
 
 		struct Verifier
 		{
@@ -177,7 +194,7 @@ private:
 
 			const TxBase* m_pTx;
 			TxBase::IReader* m_pR;
-			TxBase::Context m_Context;
+			TxBase::Context* m_pCtx;
 
 			bool m_bFail;
 			uint32_t m_iTask;
@@ -188,7 +205,9 @@ private:
 			std::condition_variable m_TaskFinished;
 
 			std::vector<std::thread> m_vThreads;
+			std::unique_ptr<MyBatch> m_pBc;
 
+			bool ValidateAndSummarize(TxBase::Context&, const TxBase&, TxBase::IReader&&);
 			void Thread(uint32_t);
 
 			IMPLEMENT_GET_PARENT_OBJ(Processor, m_Verifier)
@@ -198,11 +217,6 @@ private:
 		bool BuildCwp();
 
 		void GenerateProofStateStrict(Merkle::HardProof&, Height);
-
-		int m_RequestedHeadersCount = 0;
-		int m_RequestedBlocksCount = 0;
-		int m_DownloadedHeaders = 0;
-		int m_DownloadedBlocks = 0;
 
 		bool m_bFlushPending = false;
 		io::Timer::Ptr m_pFlushTimer;
@@ -229,7 +243,7 @@ private:
 		Key m_Key;
 
 		bool m_bPack;
-		bool m_bRelevant;
+		Height m_hTarget;
 		Peer* m_pOwner;
 
 		bool operator < (const Task& t) const { return (m_Key < t.m_Key); }
@@ -243,6 +257,8 @@ private:
 
 	TaskList m_lstTasksUnassigned;
 	TaskSet m_setTasks;
+
+	uint64_t m_LastDummyID = 0;
 
 	struct FirstTimeSync
 	{
@@ -263,6 +279,9 @@ private:
 		uint64_t m_SizeCompleted;
 	};
 
+	void UpdateSyncStatus();
+	void UpdateSyncStatusRaw();
+	void SetSyncTimer(uint32_t ms);
 	void OnSyncTimer();
 	void SyncCycle();
 	bool SyncCycle(Peer&);
@@ -274,6 +293,7 @@ private:
 	bool TryAssignTask(Task&, Peer&);
 	void DeleteUnassignedTask(Task&);
 
+	void InitKeys();
 	void InitIDs();
 	void InitMode();
 
@@ -353,6 +373,7 @@ private:
 
 		static void CalcMsgKey(NodeDB::WalkerBbs::Data&);
 		uint32_t m_LastCleanup_ms = 0;
+		uint32_t m_LastRecommendedChannel_ms = 0;
 		BbsChannel m_RecommendedChannel = 0;
 		void Cleanup();
 		void FindRecommendedChannel();
@@ -373,12 +394,14 @@ private:
 			} m_Peer;
 
 			Peer* m_pPeer;
+			uint64_t m_Cursor;
 
 			typedef boost::intrusive::multiset<InBbs> BbsSet;
 			typedef boost::intrusive::multiset<InPeer> PeerSet;
 		};
 
 		Subscription::BbsSet m_Subscribed;
+		Timestamp m_HighestPosted_s = 0;
 
 		IMPLEMENT_GET_PARENT_OBJ(Node, m_Bbs)
 	} m_Bbs;
@@ -428,6 +451,7 @@ private:
 			static const uint16_t DontSync		= 0x040;
 			static const uint16_t Finalizing	= 0x080;
 			static const uint16_t HasTreasury	= 0x100;
+			static const uint16_t Chocking		= 0x200;
 		};
 
 		uint16_t m_Flags;
@@ -436,6 +460,9 @@ private:
 
 		Block::SystemState::Full m_Tip;
 		uint8_t m_LoginFlags;
+
+		uint64_t m_CursorBbs;
+		TxPool::Fluff::Element* m_pCursorTx;
 
 		TaskList m_lstTasks;
 		std::set<Task::Key> m_setRejected; // data that shouldn't be requested from this peer. Reset after reconnection or on receiving NewTip
@@ -457,9 +484,16 @@ private:
 		void SetTimer(uint32_t timeout_ms);
 		void KillTimer();
 		void OnResendPeers();
+		void SyncQuery();
 		void SendBbsMsg(const NodeDB::WalkerBbs::Data&);
 		void DeleteSelf(bool bIsError, uint8_t nByeReason);
+		void BroadcastTxs();
+		void BroadcastBbs();
+		void BroadcastBbs(Bbs::Subscription&);
+		void OnChocking();
+		void SetTxCursor(TxPool::Fluff::Element*);
 
+		bool IsChocking(size_t nExtra = 0);
 		bool ShouldAssignTasks();
 		bool ShouldFinalizeMining();
 		Task& get_FirstTask();
@@ -476,7 +510,7 @@ private:
 		virtual void OnMsg(proto::Authentication&&) override;
 		virtual void OnMsg(proto::Login&&) override;
 		virtual void OnMsg(proto::Bye&&) override;
-		virtual void OnMsg(proto::Ping&&) override;
+		virtual void OnMsg(proto::Pong&&) override;
 		virtual void OnMsg(proto::NewTip&&) override;
 		virtual void OnMsg(proto::DataMissing&&) override;
 		virtual void OnMsg(proto::GetHdr&&) override;
@@ -503,6 +537,7 @@ private:
 		virtual void OnMsg(proto::BbsGetMsg&&) override;
 		virtual void OnMsg(proto::BbsSubscribe&&) override;
 		virtual void OnMsg(proto::BbsPickChannel&&) override;
+		virtual void OnMsg(proto::BbsResetSync&&) override;
 		virtual void OnMsg(proto::MacroblockGet&&) override;
 		virtual void OnMsg(proto::Macroblock&&) override;
 		virtual void OnMsg(proto::ProofChainWork&&) override;
@@ -583,7 +618,7 @@ private:
 			ECC::Hash::Value m_hvNonceSeed; // immutable
 		};
 
-		bool IsEnabled() { return m_externalPOW || !m_vThreads.empty(); }
+		bool IsEnabled() { return m_External.m_pSolver || !m_vThreads.empty(); }
 
 		void Initialize(IExternalPOW* externalPOW=nullptr);
 
@@ -603,10 +638,13 @@ private:
 		std::mutex m_Mutex;
 		Task::Ptr m_pTask; // currently being-mined
 
-		// external miner stuff
-		IExternalPOW* m_externalPOW=nullptr;
-		uint64_t m_jobID=0;
-		Block::SystemState::Full m_savedState;
+		struct External
+		{
+			IExternalPOW* m_pSolver = nullptr;
+			Task::Ptr m_pTask;
+			uint64_t m_jobID = 0;
+
+		} m_External;
 
 		io::Timer::Ptr m_pTimer;
 		bool m_bTimerPending = false;

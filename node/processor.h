@@ -42,7 +42,7 @@ class NodeProcessor
 	void Rollback();
 	void PruneOld();
 	void InitializeFromBlocks();
-	void RequestDataInternal(const Block::SystemState::ID&, uint64_t row, bool bBlock);
+	void RequestDataInternal(const Block::SystemState::ID&, uint64_t row, bool bBlock, Height hTarget);
 
 	struct RollbackData;
 
@@ -65,10 +65,12 @@ class NodeProcessor
 	static void OnCorrupted();
 	void get_Definition(Merkle::Hash&, bool bForNextState);
 	void get_Definition(Merkle::Hash&, const Merkle::Hash& hvHist);
+	Height get_FossilHeight();
+
+	typedef std::pair<int64_t, std::pair<int64_t, Difficulty::Raw> > THW; // Time-Height-Work. Time and Height are signed
 	Difficulty get_NextDifficulty();
 	Timestamp get_MovingMedian();
-	Timestamp get_MovingMedianEx(uint64_t& row); // in-out
-	Height get_FossilHeight();
+	void get_MovingMedianEx(uint64_t rowLast, uint32_t nWindow, THW&);
 
 	struct UtxoSig;
 	struct UnspentWalker;
@@ -158,15 +160,12 @@ public:
 	void EnumCongestions(uint32_t nMaxBlocksBacklog);
 	static bool IsRemoteTipNeeded(const Block::SystemState::Full& sTipRemote, const Block::SystemState::Full& sTipMy);
 
-	virtual void RequestData(const Block::SystemState::ID&, bool bBlock, const PeerID* pPreferredPeer) {}
+	virtual void RequestData(const Block::SystemState::ID&, bool bBlock, const PeerID* pPreferredPeer, Height hTarget) {}
 	virtual void OnPeerInsane(const PeerID&) {}
 	virtual void OnNewState() {}
 	virtual void OnRolledBack() {}
 	virtual bool VerifyBlock(const Block::BodyBase&, TxBase::IReader&&, const HeightRange&);
 	virtual void AdjustFossilEnd(Height&) {}
-	virtual void OnStateData() {}
-	virtual void OnBlockData() {}
-	virtual void OnUpToDate() {}
 	virtual bool OpenMacroblock(Block::BodyBase::RW&, const NodeDB::StateID&) { return false; }
 	virtual void OnModified() {}
 
@@ -194,7 +193,10 @@ public:
 		:public GeneratedBlock
 	{
 		TxPool::Fluff& m_TxPool;
-		Key::IKdf& m_Kdf;
+
+		Key::Index m_SubIdx;
+		Key::IKdf& m_Coin;
+		Key::IPKdf& m_Tag;
 
 		enum Mode {
 			Assemble,
@@ -204,7 +206,7 @@ public:
 
 		Mode m_Mode = Mode::SinglePass;
 
-		BlockContext(TxPool::Fluff& txp, Key::IKdf& kdf);
+		BlockContext(TxPool::Fluff& txp, Key::Index, Key::IKdf& coin, Key::IPKdf& tag);
 	};
 
 	bool GenerateNewBlock(BlockContext&);
@@ -252,9 +254,10 @@ public:
 		static_assert(sizeof(Key) == sizeof(ECC::uintBig) + 1, "");
 
 		struct Value {
-			uintBigFor<ECC::Key::Index>::Type m_iKdf;
 			ECC::Key::IDV::Packed m_Kidv;
 			uintBigFor<Height>::Type m_Maturity;
+			AssetID m_AssetID;
+			uint8_t m_Added;
 		};
 	};
 #pragma pack (pop)

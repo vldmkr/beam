@@ -13,6 +13,10 @@ Rectangle {
 
 	MainViewModel {id: viewModel}
 
+    StatusbarViewModel {
+        id: statusbarModel
+    }
+
     color: Style.marine
 
     MouseArea {
@@ -122,15 +126,6 @@ Rectangle {
             width: 40
             height: 28
             source: "qrc:/assets/logo.svg"
-
-			MouseArea {
-                id: mouseArea
-                anchors.fill: parent
-                onClicked: {
-					selectedItem = -1;
-					content.setSource("qrc:/dashboard.qml");
-				}
-            }
         }
 
     }

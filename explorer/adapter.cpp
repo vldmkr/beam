@@ -67,6 +67,7 @@ struct ResponseCache {
         auto it = b;
         while (it != blocks.end()) {
             if (it->first >= horizon) break;
+            ++it;
         }
         blocks.erase(b, it);
     }
@@ -93,10 +94,11 @@ using nlohmann::json;
 } //namespace
 
 /// Explorer server backend, gets callback on status update and returns json messages for server
-class Adapter : public INodeObserver, public IAdapter {
+class Adapter : public Node::IObserver, public IAdapter {
 public:
     Adapter(Node& node) :
         _packer(PACKER_FRAGMENTS_SIZE),
+		_node(node),
         _nodeBackend(node.get_Processor()),
         _statusDirty(true),
         _nodeIsSyncing(true),
@@ -127,13 +129,14 @@ private:
     }
 
     /// Returns body for /status request
-    void OnSyncProgress(int done, int total) override {
-        bool isSyncing = (done != total);
+    void OnSyncProgress() override {
+		const Node::SyncStatus& s = _node.m_SyncStatus;
+        bool isSyncing = (s.m_Done != s.m_Total);
         if (isSyncing != _nodeIsSyncing) {
             _statusDirty = true;
             _nodeIsSyncing = isSyncing;
         }
-        if (_nextHook) _nextHook->OnSyncProgress(done, total);
+        if (_nextHook) _nextHook->OnSyncProgress();
     }
 
     void OnStateChanged() override {
@@ -253,7 +256,7 @@ private:
                 outputs.push_back(
                 json{
                     {"commitment", uint256_to_hex(buf, v->m_Commitment.m_X)},
-                    {"maturity",   v->m_Maturity},
+                    {"maturity",   v->get_MinMaturity(blockState.m_Height)},
                     {"coinbase",   v->m_Coinbase},
                     {"incubation", v->m_Incubation}
                 }
@@ -262,10 +265,16 @@ private:
 
             json kernels = json::array();
             for (const auto &v : block.m_vKernels) {
+                Merkle::Hash kernelID;
+                v->get_ID(kernelID);
                 kernels.push_back(
-                json{
-                    {"fee", v->m_Fee},
-                }
+                    json{
+                        {"id", hash_to_hex(buf, kernelID)},
+                        {"excess", uint256_to_hex(buf, v->m_Commitment.m_X)},
+                        {"minHeight", v->m_Height.m_Min},
+                        {"maxHeight", v->m_Height.m_Max},
+                        {"fee", v->m_Fee}
+                    }
                 );
             }
 
@@ -365,6 +374,7 @@ private:
     HttpMsgCreator _packer;
 
     // node db interface
+	Node& _node;
     NodeProcessor& _nodeBackend;
 
     // helper fragments
@@ -377,8 +387,8 @@ private:
     bool _nodeIsSyncing;
 
     // node observers chain
-    INodeObserver** _hook;
-    INodeObserver* _nextHook;
+    Node::IObserver** _hook;
+    Node::IObserver* _nextHook;
 
     ResponseCache _cache;
 

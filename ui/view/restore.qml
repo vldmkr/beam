@@ -9,19 +9,79 @@ import QtQuick.Layouts 1.3
 
 Item
 {
-    id: root
-
-    anchors.fill: parent
+    id: root_restore
 
     property bool isRecoveryMode: false
-    property bool isCreating: false
-    property bool isConnectToRandomNode: false
+    property alias isCreating: viewModel.isCreating
+    property var cancelCallback: undefined
+
+    ConfirmationDialog {
+        id: confirmationDialog
+        okButtonColor: Style.bright_teal
+        okButtonText: qsTr("change settings")
+        okButtonIconSource: "qrc:/assets/icon-back-blue.svg"
+        cancelButtonIconSource: "qrc:/assets/icon-cancel-white.svg"
+
+        property alias titleText: title.text
+        property alias messageText: message.text
+
+        contentItem: Item {
+            id: confirmationContent
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: 18
+
+                SFText {
+                    id: title
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.minimumHeight: 21
+                    Layout.leftMargin: 68
+                    Layout.rightMargin: 68
+                    Layout.topMargin: 30
+                    font.pixelSize: 18
+                    font.styleName: "Bold";
+                    font.weight: Font.Bold
+                    color: Style.white
+                }
+
+                SFText {
+                    id: message
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.minimumHeight: 18
+                    Layout.leftMargin: 60
+                    Layout.rightMargin: 60
+                    Layout.bottomMargin: 30
+                    font.pixelSize: 14
+                    color: Style.white
+                }
+            }
+        }
+        onAccepted: {
+            cancelCreating();
+        }
+    }
 
     RestoreViewModel {
         id: viewModel 
         onSyncCompleted: {
-            root.parent.source = "qrc:/main.qml";
+            if (isRecoveryMode || isCreating)
+                root.parent.source = "qrc:/main.qml";
+            else
+                root_restore.parent.source = "qrc:/main.qml";
         }
+
+        onWalletError: {
+            if (isCreating) {
+                confirmationDialog.titleText = title;
+                confirmationDialog.messageText = message;
+                confirmationDialog.open();
+            }
+        }
+    }
+
+    function cancelCreating() {
+        viewModel.resetWallet();
+        cancelCallback();
     }
 
     LogoComponent {
@@ -39,24 +99,62 @@ Item
             source: "qrc:/assets/bg.svg"
         }
 
-
         ColumnLayout {
-            anchors.horizontalCenter: parent.horizontalCenter
             anchors.fill: parent
-            anchors.topMargin: 50
-
+            spacing: 0
             Item {
                 Layout.fillHeight: true
-                Layout.maximumHeight: 140
+                Layout.fillWidth: true
+                Layout.minimumHeight: 70
+                Layout.maximumHeight: 280
             }
 
             Loader { 
                 sourceComponent: logoComponent 
-                Layout.alignment: Qt.AlignHCenter | Qt.AlignTop
-                //Layout.topMargin: 140
+                Layout.alignment: Qt.AlignHCenter
+                Layout.fillHeight: true
+                Layout.minimumHeight: 200//187
+                Layout.maximumHeight: 269
+            }
+            Item {
+                Layout.fillHeight: true
+                Layout.minimumHeight: 30
+                Layout.maximumHeight: 89
+
+            }
+            Item {
+                Layout.preferredHeight: 186 
+            }
+
+            Item {
+                Layout.fillHeight: true
+                Layout.fillWidth: true
+                Layout.minimumHeight: 67
+            }
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 0
+            Item {
+                Layout.fillHeight: true
+                Layout.minimumHeight: 70
+                Layout.maximumHeight: 280
+            }
+
+            Item { 
+                Layout.fillHeight: true
+                Layout.minimumHeight: 200//187
+                Layout.maximumHeight: 269
+            }
+
+            Item {
+                Layout.fillHeight: true
+                Layout.minimumHeight: 30
+                Layout.maximumHeight: 89
             }
             SFText {
-                Layout.bottomMargin: 6
+                  Layout.bottomMargin: 6
                 Layout.alignment: Qt.AlignHCenter | Qt.AlignTop
                 text: !isCreating ? qsTr("Loading wallet...") : ( isRecoveryMode ? qsTr("Restoring wallet...") : qsTr("Creating wallet..."))
                 font.pixelSize: 14
@@ -83,26 +181,20 @@ Item
             Row {
                 Layout.alignment: Qt.AlignBottom | Qt.AlignHCenter
                 Layout.topMargin: 52
-                //Layout.bottomMargin: 143
 
                 CustomButton {
-                    visible: isRecoveryMode && isCreating
+                    visible: isCreating
                     text: qsTr("cancel")
                     icon.source: "qrc:/assets/icon-cancel.svg"
                     onClicked: {
-                        viewModel.cancelRestore();
-                        root.parent.setSource("qrc:/start.qml", {"isRestoreCancelled": true, "isRandomNodeSelected": isConnectToRandomNode});
+                        cancelCreating();
                     }
                 }
             }
-
             Item {
                 Layout.fillHeight: true
-                Layout.maximumHeight: 143
+                Layout.minimumHeight: 67
             }
-        }
-        Component.onCompleted: {
-            //viewModel.restoreFromBlockchain();
         }
     }
 }

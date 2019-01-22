@@ -23,6 +23,8 @@
 #include "core/serialization_adapters.h"
 #include "core/treasury.h"
 #include "unittests/util.h"
+#include "mnemonic/mnemonic.h"
+#include "utility/string_helpers.h"
 
 #ifndef LOG_VERBOSE_ENABLED
     #define LOG_VERBOSE_ENABLED 0
@@ -64,7 +66,8 @@ namespace beam
         ss << "]";
         string str = ss.str();
         os << str;
-        size_t c = 13 - str.length();
+        assert(str.length() <= 24);
+        size_t c = 24 - str.length();
         for (size_t i = 0; i < c; ++i) os << ' ';
         return os;
     }
@@ -100,12 +103,19 @@ namespace
         cout << options << std::endl;
     }
 
-    void newAddress(
+    WalletAddress newAddress(
         const IWalletDB::Ptr& walletDB,
         const std::string& label,
-        const SecString& pass)
+        const SecString& pass,
+        bool isNever = false
+    )
     {
         WalletAddress address = wallet::createAddress(walletDB);
+
+        if (isNever)
+        {
+            address.m_duration = 0;
+        }
 
         address.m_label = label;
         walletDB->saveAddress(address);
@@ -114,170 +124,248 @@ namespace
         if (!label.empty()) {
             LOG_INFO() << "label = " << label;
         }
+        return address;
+    }
+
+    WordList GeneratePhrase()
+    {
+        auto phrase = createMnemonic(getEntropy(), language::en);
+        assert(phrase.size() == 12);
+        cout << "======\nGenerated seed phrase: \n\n\t";
+        for (const auto& word : phrase)
+        {
+            cout << word << ';';
+        }
+        cout << "\n\n\tIMPORTANT\n\n\tYour seed phrase is the access key to all the cryptocurrencies in your wallet.\n\tPrint or write down the phrase to keep it in a safe or in a locked vault.\n\tWithout the phrase you will not be able to recover your money.\n======" << endl;
+        return phrase;
+    }
+
+    bool ReadWalletSeed(NoLeak<uintBig>& walletSeed, const po::variables_map& vm, bool generateNew)
+    {
+        SecString seed;
+        WordList phrase;
+        if (generateNew)
+        {
+            LOG_INFO() << "Generating seed phrase...";
+            phrase = GeneratePhrase();
+        }
+        else if (vm.count(cli::SEED_PHRASE))
+        {
+            auto tempPhrase = vm[cli::SEED_PHRASE].as<string>();
+            phrase = string_helpers::split(tempPhrase, ';');
+            assert(phrase.size() == 12);
+            if (phrase.size() != 12)
+            {
+                LOG_ERROR() << "Invalid seed phrases provided: " << tempPhrase;
+                return false;
+            }
+        }
+        else
+        {
+            LOG_ERROR() << "Seed phrase has not been provided.";
+            return false;
+        }
+
+        auto buf = decodeMnemonic(phrase);
+        seed.assign(buf.data(), buf.size());
+
+        walletSeed.V = seed.hash().V;
+        return true;
     }
 }
 
 void ResolveWID(PeerID& res, const std::string& s)
 {
-	bool bValid = true;
-	ByteBuffer bb = from_hex(s, &bValid);
+    bool bValid = true;
+    ByteBuffer bb = from_hex(s, &bValid);
 
-	if ((bb.size() != res.nBytes) || !bValid)
-		throw std::runtime_error("invalid WID");
+    if ((bb.size() != res.nBytes) || !bValid)
+        throw std::runtime_error("invalid WID");
 
-	memcpy(res.m_pData, &bb.front(), res.nBytes);
+    memcpy(res.m_pData, &bb.front(), res.nBytes);
 }
 
 template <typename T>
 bool FLoad(T& x, const std::string& sPath, bool bStrict = true)
 {
-	std::FStream f;
-	if (!f.Open(sPath.c_str(), true, bStrict))
-		return false;
+    std::FStream f;
+    if (!f.Open(sPath.c_str(), true, bStrict))
+        return false;
 
-	yas::binary_iarchive<std::FStream, SERIALIZE_OPTIONS> arc(f);
-	arc & x;
-	return true;
+    yas::binary_iarchive<std::FStream, SERIALIZE_OPTIONS> arc(f);
+    arc & x;
+    return true;
 }
 
 template <typename T>
 void FSave(const T& x, const std::string& sPath)
 {
-	std::FStream f;
-	f.Open(sPath.c_str(), false, true);
+    std::FStream f;
+    f.Open(sPath.c_str(), false, true);
 
-	yas::binary_oarchive<std::FStream, SERIALIZE_OPTIONS> arc(f);
-	arc & x;
+    yas::binary_oarchive<std::FStream, SERIALIZE_OPTIONS> arc(f);
+    arc & x;
 }
 
 int HandleTreasury(const po::variables_map& vm, Key::IKdf& kdf)
 {
-	PeerID wid;
-	Scalar::Native sk;
-	Treasury::get_ID(kdf, wid, sk);
+    PeerID wid;
+    Scalar::Native sk;
+    Treasury::get_ID(kdf, wid, sk);
 
-	char szID[PeerID::nTxtLen + 1];
-	wid.Print(szID);
+    char szID[PeerID::nTxtLen + 1];
+    wid.Print(szID);
 
-	static const char* szPlans = "treasury_plans.bin";
-	static const char* szRequest = "-plan.bin";
-	static const char* szResponse = "-response.bin";
-	static const char* szData = "treasury_data.bin";
+    static const char* szPlans = "treasury_plans.bin";
+    static const char* szRequest = "-plan.bin";
+    static const char* szResponse = "-response.bin";
+    static const char* szData = "treasury_data.bin";
 
-	Treasury tres;
-	FLoad(tres, szPlans, false);
+    Treasury tres;
+    FLoad(tres, szPlans, false);
 
 
-	auto nCode = vm[cli::TR_OPCODE].as<uint32_t>();
-	switch (nCode)
-	{
-	default:
-		cout << "ID: " << szID << std::endl;
-		break;
+    auto nCode = vm[cli::TR_OPCODE].as<uint32_t>();
+    switch (nCode)
+    {
+    default:
+        cout << "ID: " << szID << std::endl;
+        break;
 
-	case 1:
-		{
-			// generate plan
-			std::string sID = vm[cli::TR_WID].as<std::string>();
-			ResolveWID(wid, sID);
+    case 1:
+        {
+            // generate plan
+            std::string sID = vm[cli::TR_WID].as<std::string>();
+            ResolveWID(wid, sID);
 
-			auto perc = vm[cli::TR_PERC].as<double>();
-			perc *= 0.01;
+            auto perc = vm[cli::TR_PERC].as<double>();
+            perc *= 0.01;
 
-			Amount val = static_cast<Amount>(Rules::get().EmissionValue0 * perc); // rounded down
+			Amount val = static_cast<Amount>(Rules::get().Emission.Value0 * perc); // rounded down
 
-			Treasury::Parameters pars; // default
-			Treasury::Entry* pE = tres.CreatePlan(wid, val, pars);
+            Treasury::Parameters pars; // default
 
-			FSave(pE->m_Request, sID + szRequest);
-			FSave(tres, szPlans);
-		}
-		break;
+			uint32_t m = vm[cli::TR_M].as<uint32_t>();
+			uint32_t n = vm[cli::TR_N].as<uint32_t>();
 
-	case 2:
-		{
-			// generate response
-			Treasury::Request treq;
-			FLoad(treq, std::string(szID) + szRequest);
+			if (m >= n)
+				throw std::runtime_error("bad m/n");
 
-			Treasury::Response tresp;
-			uint64_t nIndex = 1;
-			tresp.Create(treq, kdf, nIndex);
+			assert(n);
+			if (pars.m_Bursts % n)
+				throw std::runtime_error("bad n (roundoff)");
 
-			FSave(tresp, std::string(szID) + szResponse);
-		}
-		break;
+			pars.m_Bursts /= n;
+			pars.m_Maturity0 = pars.m_MaturityStep * pars.m_Bursts * m;
 
-	case 3:
-		{
-			// verify & import reponse
-			std::string sID = vm[cli::TR_WID].as<std::string>();
-			ResolveWID(wid, sID);
+            Treasury::Entry* pE = tres.CreatePlan(wid, val, pars);
 
-			Treasury::EntryMap::iterator it = tres.m_Entries.find(wid);
-			if (tres.m_Entries.end() == it)
-				throw std::runtime_error("plan not found");
+            FSave(pE->m_Request, sID + szRequest);
+            FSave(tres, szPlans);
+        }
+        break;
 
-			Treasury::Entry& e = it->second;
-			e.m_pResponse.reset(new Treasury::Response);
-			FLoad(*e.m_pResponse, sID + szResponse);
+    case 2:
+        {
+            // generate response
+            Treasury::Request treq;
+            FLoad(treq, std::string(szID) + szRequest);
 
-			if (!e.m_pResponse->IsValid(e.m_Request))
-				throw std::runtime_error("invalid response");
+            Treasury::Response tresp;
+            uint64_t nIndex = 1;
+            tresp.Create(treq, kdf, nIndex);
 
-			FSave(tres, szPlans);
-		}
-		break;
+            FSave(tresp, std::string(szID) + szResponse);
+        }
+        break;
 
-	case 4:
-		{
-			// Finally generate treasury
-			Treasury::Data data;
-			data.m_sCustomMsg = vm[cli::TR_COMMENT].as<std::string>();
-			tres.Build(data);
+    case 3:
+        {
+            // verify & import reponse
+            std::string sID = vm[cli::TR_WID].as<std::string>();
+            ResolveWID(wid, sID);
 
-			FSave(data, szData);
+            Treasury::EntryMap::iterator it = tres.m_Entries.find(wid);
+            if (tres.m_Entries.end() == it)
+                throw std::runtime_error("plan not found");
 
-			Serializer ser;
-			ser & data;
+            Treasury::Entry& e = it->second;
+            e.m_pResponse.reset(new Treasury::Response);
+            FLoad(*e.m_pResponse, sID + szResponse);
 
-			ByteBuffer bb;
-			ser.swap_buf(bb);
+            if (!e.m_pResponse->IsValid(e.m_Request))
+                throw std::runtime_error("invalid response");
 
-			Hash::Value hv;
-			Hash::Processor() << Blob(bb) >> hv;
+            FSave(tres, szPlans);
+        }
+        break;
 
-			char szHash[Hash::Value::nTxtLen + 1];
-			hv.Print(szHash);
+    case 4:
+        {
+            // Finally generate treasury
+            Treasury::Data data;
+            data.m_sCustomMsg = vm[cli::TR_COMMENT].as<std::string>();
+            tres.Build(data);
 
-			cout << "Treasury data hash: " << szHash << std::endl;
+            FSave(data, szData);
 
-		}
-		break;
+            Serializer ser;
+            ser & data;
 
-	case 5:
-		{
-			// recover and print
-			Treasury::Data data;
-			FLoad(data, szData);
+            ByteBuffer bb;
+            ser.swap_buf(bb);
 
-			std::vector<Treasury::Data::Coin> vCoins;
-			data.Recover(kdf, vCoins);
+            Hash::Value hv;
+            Hash::Processor() << Blob(bb) >> hv;
 
-			cout << "Recovered coins: " << vCoins.size() << std::endl;
+            char szHash[Hash::Value::nTxtLen + 1];
+            hv.Print(szHash);
 
-			for (size_t i = 0; i < vCoins.size(); i++)
-			{
-				const Treasury::Data::Coin& coin = vCoins[i];
-				cout << "\t" << coin.m_Kidv.m_Value << ", Height=" << coin.m_Incubation << std::endl;
+            cout << "Treasury data hash: " << szHash << std::endl;
 
-			}
-		}
-		break;
+        }
+        break;
 
-	}
+    case 5:
+        {
+            // recover and print
+            Treasury::Data data;
+            FLoad(data, szData);
 
-	return 0;
+            std::vector<Treasury::Data::Coin> vCoins;
+            data.Recover(kdf, vCoins);
+
+            cout << "Recovered coins: " << vCoins.size() << std::endl;
+
+            for (size_t i = 0; i < vCoins.size(); i++)
+            {
+                const Treasury::Data::Coin& coin = vCoins[i];
+                cout << "\t" << coin.m_Kidv << ", Height=" << coin.m_Incubation << std::endl;
+
+            }
+        }
+        break;
+
+    case 6:
+        {
+            // bursts
+            Treasury::Data data;
+            FLoad(data, szData);
+
+			auto vBursts = data.get_Bursts();
+
+            cout << "Total bursts: " << vBursts.size() << std::endl;
+
+            for (size_t i = 0; i < vBursts.size(); i++)
+            {
+                const Treasury::Data::Burst& b = vBursts[i];
+                cout << "\t" << "Height=" << b.m_Height << ", Value=" << b.m_Value << std::endl;
+            }
+        }
+        break;
+    }
+
+    return 0;
 }
 
 
@@ -287,28 +375,28 @@ static const unsigned LOG_ROTATION_PERIOD = 3*60*60*1000; // 3 hours
 
 int main_impl(int argc, char* argv[])
 {
-	beam::Crash::InstallHandler(NULL);
+    beam::Crash::InstallHandler(NULL);
 
     try
     {
-        auto options = createOptionsDescription(GENERAL_OPTIONS | WALLET_OPTIONS);
+        auto [options, visibleOptions] = createOptionsDescription(GENERAL_OPTIONS | WALLET_OPTIONS);
 
         po::variables_map vm;
         try
         {
-            vm = getOptions(argc, argv, "beam-wallet.cfg", options);
+            vm = getOptions(argc, argv, "beam-wallet.cfg", options, true);
         }
         catch (const po::error& e)
         {
             cout << e.what() << std::endl;
-            printHelp(options);
+            printHelp(visibleOptions);
 
             return 0;
         }
 
         if (vm.count(cli::HELP))
         {
-            printHelp(options);
+            printHelp(visibleOptions);
 
             return 0;
         }
@@ -336,18 +424,12 @@ int main_impl(int argc, char* argv[])
             po::notify(vm);
 
             Rules::get().UpdateChecksum();
-            LOG_INFO() << "Rules signature: " << Rules::get().Checksum;
 
-            // TODO later auto port = vm[cli::PORT].as<uint16_t>();
-
-            {
+           {
                 reactor = io::Reactor::create();
                 io::Reactor::Scope scope(*reactor);
 
                 io::Reactor::GracefulIntHandler gih(*reactor);
-
-                NoLeak<uintBig> walletSeed;
-                walletSeed.V = Zero;
 
                 io::Timer::Ptr logRotateTimer = io::Timer::create(*reactor);
                 logRotateTimer->start(
@@ -362,24 +444,41 @@ int main_impl(int argc, char* argv[])
                     {
                         auto command = vm[cli::COMMAND].as<string>();
                         if (command != cli::INIT
+                            && command != cli::RESTORE
                             && command != cli::SEND
                             && command != cli::RECEIVE
                             && command != cli::LISTEN
                             && command != cli::TREASURY
                             && command != cli::INFO
+                            && command != cli::EXPORT_MINER_KEY
+                            && command != cli::EXPORT_OWNER_KEY
                             && command != cli::NEW_ADDRESS
-                            && command != cli::CANCEL_TX)
+                            && command != cli::CANCEL_TX
+                            && command != cli::GENERATE_PHRASE)
                         {
                             LOG_ERROR() << "unknown command: \'" << command << "\'";
                             return -1;
                         }
 
+                        if (command == cli::GENERATE_PHRASE)
+                        {
+                            GeneratePhrase();
+                            return 0;
+                        }
+
+                        LOG_INFO() << "Rules signature: " << Rules::get().Checksum;
+
                         assert(vm.count(cli::WALLET_STORAGE) > 0);
                         auto walletPath = vm[cli::WALLET_STORAGE].as<string>();
 
-                        if (!WalletDB::isInitialized(walletPath) && command != cli::INIT)
+                        if (!WalletDB::isInitialized(walletPath) && (command != cli::INIT && command != cli::RESTORE))
                         {
                             LOG_ERROR() << "Please initialize your wallet first... \nExample: beam-wallet --command=init";
+                            return -1;
+                        }
+                        else if (WalletDB::isInitialized(walletPath) && (command == cli::INIT || command == cli::RESTORE))
+                        {
+                            LOG_ERROR() << "Your wallet is already initialized.";
                             return -1;
                         }
 
@@ -392,9 +491,11 @@ int main_impl(int argc, char* argv[])
                             return -1;
                         }
 
-                        if (command == cli::INIT)
+                        if (command == cli::INIT || command == cli::RESTORE)
                         {
-                            if (!beam::read_wallet_seed(walletSeed, vm))
+                            NoLeak<uintBig> walletSeed;
+                            walletSeed.V = Zero;
+                            if (!ReadWalletSeed(walletSeed, vm, command == cli::INIT))
                             {
                                 LOG_ERROR() << "Please, provide seed phrase for the wallet.";
                                 return -1;
@@ -403,6 +504,9 @@ int main_impl(int argc, char* argv[])
                             if (walletDB)
                             {
                                 LOG_INFO() << "wallet successfully created...";
+
+                                // generate default address
+                                newAddress(walletDB, "default", pass);
 
                                 return 0;
                             }
@@ -420,43 +524,83 @@ int main_impl(int argc, char* argv[])
                             return -1;
                         }
 
+                        if (command == cli::EXPORT_MINER_KEY)
+                        {
+                            uint32_t subKey = vm[cli::KEY_SUBKEY].as<uint32_t>();
+                            if (subKey < 1)
+                            {
+                                cout << "Please, specify Subkey number --subkey=N (N > 0)" << endl;
+                                return -1;
+                            }
+                            Key::IKdf::Ptr pKey = walletDB->get_ChildKdf(subKey);
+                            const ECC::HKdf& kdf = static_cast<ECC::HKdf&>(*pKey);
+
+                            KeyString ks;
+                            ks.SetPassword(Blob(pass.data(), static_cast<uint32_t>(pass.size())));
+                            ks.m_sMeta = std::to_string(subKey);
+
+                            ks.Export(kdf);
+                            cout << "Secret Subkey " << subKey <<  ": " << ks.m_sRes << std::endl;
+
+                            return 0;
+                        }
+
+                        if (command == cli::EXPORT_OWNER_KEY)
+                        {
+                            Key::IKdf::Ptr pKey = walletDB->get_ChildKdf(0);
+                            const ECC::HKdf& kdf = static_cast<ECC::HKdf&>(*pKey);
+
+                            KeyString ks;
+                            ks.SetPassword(Blob(pass.data(), static_cast<uint32_t>(pass.size())));
+                            ks.m_sMeta = std::to_string(0);
+
+                            ECC::HKdfPub pkdf;
+                            pkdf.GenerateFrom(kdf);
+
+                            ks.Export(pkdf);
+                            cout << "Owner Viewer key: " << ks.m_sRes << std::endl;
+                            
+                            return 0;
+                        }
+
                         if (command == cli::NEW_ADDRESS)
                         {
                             auto label = vm[cli::NEW_ADDRESS_LABEL].as<string>();
-                            newAddress(walletDB, label, pass);
+                            newAddress(walletDB, label, pass, vm[cli::EXPIRATION_TIME].as<string>() == "never");
 
-                            if (!vm.count(cli::LISTEN)) {
+                            if (!vm.count(cli::LISTEN)) 
+                            {
                                 return 0;
                             }
                         }
 
                         LOG_INFO() << "wallet sucessfully opened...";
 
-						if (command == cli::TREASURY)
-							return HandleTreasury(vm, *walletDB->get_MasterKdf());
+                        if (command == cli::TREASURY)
+                            return HandleTreasury(vm, *walletDB->get_MasterKdf());
 
                         if (command == cli::INFO)
                         {
                             Block::SystemState::ID stateID = {};
                             walletDB->getSystemStateID(stateID);
-                            auto totalInProgress = wallet::getTotal(walletDB, Coin::Incoming) + 
-                                wallet::getTotal(walletDB, Coin::Outgoing) + wallet::getTotal(walletDB, Coin::Change);
-                            auto totalCoinbase = wallet::getTotalByType(walletDB, Coin::Available, Key::Type::Coinbase) + 
-                                wallet::getTotalByType(walletDB, Coin::Maturing, Key::Type::Coinbase);
-                            auto totalFee = wallet::getTotalByType(walletDB, Coin::Available, Key::Type::Comission) + 
-                                wallet::getTotalByType(walletDB, Coin::Maturing, Key::Type::Comission);
-                            auto totalUnspent = wallet::getTotal(walletDB, Coin::Available) + wallet::getTotal(walletDB, Coin::Maturing);
+                            auto totalInProgress = walletDB->getTotal(Coin::Incoming) +
+                                walletDB->getTotal(Coin::Outgoing) + walletDB->getTotal(Coin::Change);
+                            auto totalCoinbase = walletDB->getTotalByType(Coin::Available, Key::Type::Coinbase) +
+                                walletDB->getTotalByType(Coin::Maturing, Key::Type::Coinbase);
+                            auto totalFee = walletDB->getTotalByType(Coin::Available, Key::Type::Comission) +
+                                walletDB->getTotalByType(Coin::Maturing, Key::Type::Comission);
+                            auto totalUnspent = walletDB->getTotal(Coin::Available) + walletDB->getTotal(Coin::Maturing);
 
                             cout << "____Wallet summary____\n\n"
                                 << "Current height............" << stateID.m_Height << '\n'
                                 << "Current state ID.........." << stateID.m_Hash << "\n\n"
-                                << "Available................." << PrintableAmount(wallet::getAvailable(walletDB)) << '\n'
-                                << "Maturing.................." << PrintableAmount(wallet::getTotal(walletDB, Coin::Maturing)) << '\n'
+                                << "Available................." << PrintableAmount(walletDB->getAvailable()) << '\n'
+                                << "Maturing.................." << PrintableAmount(walletDB->getTotal(Coin::Maturing)) << '\n'
                                 << "In progress..............." << PrintableAmount(totalInProgress) << '\n'
-                                << "Unavailable..............." << PrintableAmount(wallet::getTotal(walletDB, Coin::Unavailable)) << '\n'
-                                << "Available coinbase ......." << PrintableAmount(wallet::getAvailableByType(walletDB, Coin::Available, Key::Type::Coinbase)) << '\n'
+                                << "Unavailable..............." << PrintableAmount(walletDB->getTotal(Coin::Unavailable)) << '\n'
+                                << "Available coinbase ......." << PrintableAmount(walletDB->getAvailableByType(Key::Type::Coinbase)) << '\n'
                                 << "Total coinbase............" << PrintableAmount(totalCoinbase) << '\n'
-                                << "Avaliable fee............." << PrintableAmount(wallet::getAvailableByType(walletDB, Coin::Available, Key::Type::Comission)) << '\n'
+                                << "Avaliable fee............." << PrintableAmount(walletDB->getAvailableByType(Key::Type::Comission)) << '\n'
                                 << "Total fee................." << PrintableAmount(totalFee) << '\n'
                                 << "Total unspent............." << PrintableAmount(totalUnspent) << "\n\n";
                             if (vm.count(cli::TX_HISTORY))
@@ -479,16 +623,22 @@ int main_impl(int argc, char* argv[])
                                 return 0;
                             }
 
-                            cout << "| id\t| amount(Beam)\t| amount(c)\t| height\t| maturity\t| status \t| key type\t|\n";
+                            cout << setw(20) << "id" << " |"
+                                << setw(14) << "Beam" << " |"
+                                << setw(14) << "Groth" << " |"
+                                << setw(14) << "height" << " |"
+                                << setw(18) << "maturity" << " |"
+                                << setw(24) << "status" << " |"
+                                << setw(8) << "type" << endl;
                             walletDB->visit([](const Coin& c)->bool
                             {
-                                cout << setw(8) << c.m_ID.m_Idx
-                                    << setw(16) << PrintableAmount(Rules::Coin * ((Amount)(c.m_ID.m_Value / Rules::Coin)))
-                                    << setw(16) << PrintableAmount(c.m_ID.m_Value % Rules::Coin)
+                                cout << setw(20) << c.m_ID.m_Idx
+                                    << setw(16) << c.m_ID.m_Value / Rules::Coin
+                                    << setw(16) << c.m_ID.m_Value % Rules::Coin
                                     << setw(16) << static_cast<int64_t>(c.m_createHeight)
-                                    << setw(16) << static_cast<int64_t>(c.m_maturity)
-                                    << "  " << c.m_status
-                                    << "  " << c.m_ID.m_Type << '\n';
+                                    << setw(20) << (static_cast<int64_t>(c.m_maturity) < 0 ? "-" : std::to_string(static_cast<int64_t>(c.m_maturity)))
+                                    << "   " << c.m_status
+                                    << setw(8) << c.m_ID.m_Type << endl;
                                 return true;
                             });
                             return 0;
@@ -526,7 +676,7 @@ int main_impl(int argc, char* argv[])
                                 return -1;
                             }
 
-							receiverWalletID.FromHex(vm[cli::RECEIVER_ADDR].as<string>());
+                            receiverWalletID.FromHex(vm[cli::RECEIVER_ADDR].as<string>());
 
                             auto signedAmount = vm[cli::AMOUNT].as<double>();
                             if (signedAmount < 0)
@@ -544,36 +694,26 @@ int main_impl(int argc, char* argv[])
                                 return -1;
                             }
 
-                            auto signedFee = vm[cli::FEE].as<double>();
-                            if (signedFee < 0)
-                            {
-                                LOG_ERROR() << "Unable to take negative fee";
-                                return -1;
-                            }
-
-                            signedFee *= Rules::Coin; // convert beams to coins
-
-                            fee = static_cast<ECC::Amount>(signedFee);
+                            fee = vm[cli::FEE].as<beam::Amount>();
                         }
 
                         bool is_server = (command == cli::LISTEN || vm.count(cli::LISTEN));
 
                         Wallet wallet{ walletDB, is_server ? Wallet::TxCompletedAction() : [](auto) { io::Reactor::get_Current().stop(); } };
 
-						proto::FlyClient::NetworkStd nnet(wallet);
-						nnet.m_Cfg.m_vNodes.push_back(node_addr);
-						nnet.Connect();
+                        proto::FlyClient::NetworkStd nnet(wallet);
+                        nnet.m_Cfg.m_vNodes.push_back(node_addr);
+                        nnet.Connect();
 
-						WalletNetworkViaBbs wnet(wallet, nnet, walletDB);
-						
-						wallet.set_Network(nnet, wnet);
+                        WalletNetworkViaBbs wnet(wallet, nnet, walletDB);
+                        
+                        wallet.set_Network(nnet, wnet);
 
                         if (isTxInitiator)
                         {
-                            // TODO: make db request by 'default' label
-                            auto addresses = walletDB->getAddresses(true);
-                            assert(!addresses.empty());
-                            wallet.transfer_money(addresses[0].m_walletID, receiverWalletID, move(amount), move(fee), command == cli::SEND);
+                            WalletAddress senderAddress = newAddress(walletDB, "", pass);
+                            wnet.AddOwnAddress(senderAddress);
+                            wallet.transfer_money(senderAddress.m_walletID, receiverWalletID, move(amount), move(fee), command == cli::SEND);
                         }
 
                         if (command == cli::CANCEL_TX) 
@@ -584,13 +724,13 @@ int main_impl(int argc, char* argv[])
                             wallet.cancel_tx(txId);
                         }
 
-						io::Reactor::get_Current().run();
+                        io::Reactor::get_Current().run();
 
                     }
                     else
                     {
                         LOG_ERROR() << "command parameter not specified.";
-                        printHelp(options);
+                        printHelp(visibleOptions);
                     }
                 }
             }
@@ -598,7 +738,7 @@ int main_impl(int argc, char* argv[])
         catch (const po::error& e)
         {
             LOG_ERROR() << e.what();
-            printHelp(options);
+            printHelp(visibleOptions);
         }
         catch (const std::runtime_error& e)
         {

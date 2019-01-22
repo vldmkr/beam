@@ -14,6 +14,7 @@
 
 #include <QApplication>
 #include <QtQuick>
+#include <QQmlApplicationEngine>
 
 #include <QInputDialog>
 #include <QMessageBox>
@@ -30,6 +31,7 @@
 #include "viewmodel/help_view.h"
 #include "viewmodel/settings_view.h"
 #include "viewmodel/messages_view.h"
+#include "viewmodel/statusbar_view.h"
 #include "model/app_model.h"
 
 #include "wallet/wallet_db.h"
@@ -83,7 +85,7 @@ static const char* AppName = "Beam Wallet";
 int main (int argc, char* argv[])
 {
 #if defined Q_OS_WIN
-	QGuiApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+    QApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
 #endif
     block_sigpipe();
 
@@ -97,12 +99,24 @@ int main (int argc, char* argv[])
 
     try
     {
-        po::options_description options = createOptionsDescription(GENERAL_OPTIONS | UI_OPTIONS | WALLET_OPTIONS);
+
+        // TODO: ugly temporary fix for unused variable, GCC only
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#endif
+
+        auto [options, visibleOptions] = createOptionsDescription(GENERAL_OPTIONS | UI_OPTIONS | WALLET_OPTIONS);
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
         po::variables_map vm;
 
         try
         {
-            vm = getOptions(argc, argv, WalletSettings::WalletCfg, options);
+            vm = getOptions(argc, argv, WalletSettings::WalletCfg, options, true);
         }
         catch (const po::error& e)
         {
@@ -146,10 +160,8 @@ int main (int argc, char* argv[])
             Rules::get().UpdateChecksum();
             LOG_INFO() << "Rules signature: " << Rules::get().Checksum;
 
-            QQuickView view;
-            view.setResizeMode(QQuickView::SizeRootObjectToView);
-            view.setMinimumSize(QSize(780, 500));
-            view.setFlag(Qt::WindowFullscreenButtonHint);
+            QQmlApplicationEngine engine;
+
             WalletSettings settings(appDataDir);
             AppModel appModel(settings);
 
@@ -173,16 +185,34 @@ int main (int argc, char* argv[])
             qmlRegisterType<NotificationsViewModel>("Beam.Wallet", 1, 0, "NotificationsViewModel");
             qmlRegisterType<HelpViewModel>("Beam.Wallet", 1, 0, "HelpViewModel");
             qmlRegisterType<MessagesViewModel>("Beam.Wallet", 1, 0, "MessagesViewModel");
+            qmlRegisterType<StatusbarViewModel>("Beam.Wallet", 1, 0, "StatusbarViewModel");
 
             qmlRegisterType<AddressItem>("Beam.Wallet", 1, 0, "AddressItem");
             qmlRegisterType<ContactItem>("Beam.Wallet", 1, 0, "ContactItem");
             qmlRegisterType<TxObject>("Beam.Wallet", 1, 0, "TxObject");
             qmlRegisterType<UtxoItem>("Beam.Wallet", 1, 0, "UtxoItem");
 
-            Translator translator;
-            view.setSource(QUrl("qrc:/root.qml"));
+            engine.load(QUrl("qrc:/root.qml"));
 
-            view.show();
+            if (engine.rootObjects().count() < 1)
+            {
+                LOG_ERROR() << "Probmlem with QT";
+                return -1;
+            }
+
+            QObject* topLevel = engine.rootObjects().value(0);
+            QQuickWindow* window = qobject_cast<QQuickWindow*>(topLevel);
+
+            if (!window)
+            {
+                LOG_ERROR() << "Probmlem with QT";
+                return -1;
+            }
+
+            window->setMinimumSize(QSize(768, 540));
+            window->setFlag(Qt::WindowFullscreenButtonHint);
+
+            window->show();
 
             return app.exec();
         }

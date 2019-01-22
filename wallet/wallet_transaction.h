@@ -42,8 +42,9 @@ namespace beam { namespace wallet
     MACRO(InvalidKernelProof,     5, "Invalid kernel proof provided") \
     MACRO(FailedToSendParameters, 6, "Failed to send tx parameters") \
     MACRO(NoInputs,               7, "No inputs") \
-    MACRO(ExpiredAddressProvided, 8, "address is expired") \
-    MACRO(FailedToGetParameter,   9, "failed to get parameter") \
+    MACRO(ExpiredAddressProvided, 8, "Address is expired") \
+    MACRO(FailedToGetParameter,   9, "Failed to get parameter") \
+    MACRO(TransactionExpired,     10, "Transaction has expired") \
 
     enum TxFailureReason : int32_t
     {
@@ -102,7 +103,7 @@ namespace beam { namespace wallet
         template <typename T>
         bool SetParameter(TxParameterID paramID, const T& value)
         {
-            bool shouldNotifyAboutChanges = isShouldNotifyAboutChanges(paramID);
+            bool shouldNotifyAboutChanges = ShouldNotifyAboutChanges(paramID);
             return SetParameter(paramID, value, shouldNotifyAboutChanges);
         }
 
@@ -136,7 +137,7 @@ namespace beam { namespace wallet
         bool SendTxParameters(SetTxParameter&& msg) const;
         virtual void UpdateImpl() = 0;
 
-        virtual bool isShouldNotifyAboutChanges(TxParameterID paramID) const { return true; };
+        virtual bool ShouldNotifyAboutChanges(TxParameterID paramID) const { return true; };
     protected:
 
         INegotiatorGateway& m_Gateway;
@@ -170,7 +171,7 @@ namespace beam { namespace wallet
     private:
         TxType GetType() const override;
         void UpdateImpl() override;
-        bool isShouldNotifyAboutChanges(TxParameterID paramID) const override;
+        bool ShouldNotifyAboutChanges(TxParameterID paramID) const override;
         void SendInvitation(const TxBuilder& builder, bool isSender);
         void ConfirmInvitation(const TxBuilder& builder);
         void ConfirmTransaction(const TxBuilder& builder);

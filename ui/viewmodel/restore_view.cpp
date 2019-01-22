@@ -33,6 +33,7 @@ RestoreViewModel::RestoreViewModel()
     , m_speedFilter{24}
     , m_currentEstimationSec{0}
     , m_skipProgress{false}
+    , m_isCreating{false}
 {
     connect(&m_walletModel, SIGNAL(onSyncProgressUpdated(int, int)),
         SLOT(onSyncProgressUpdated(int, int)));
@@ -46,8 +47,8 @@ RestoreViewModel::RestoreViewModel()
     connect(&m_walletModel, SIGNAL(nodeConnectionChanged(bool)),
         SLOT(onNodeConnectionChanged(bool)));
 
-    connect(&m_walletModel, SIGNAL(nodeConnectionFailed()),
-        SLOT(onNodeConnectionFailed()));
+    connect(&m_walletModel, SIGNAL(onWalletError(beam::wallet::ErrorType)),
+        SLOT(onGetWalletError(beam::wallet::ErrorType)));
 
     connect(&m_updateTimer, SIGNAL(timeout()), this, SLOT(onUpdateTimer()));
 
@@ -67,70 +68,65 @@ void RestoreViewModel::onSyncProgressUpdated(int done, int total)
 {
     m_done = done;
     m_total = total;
-    if (done == 0 && total == 0)
-    {
-        m_skipProgress = true;
-    }
+    //if (done == 0 && total == 0)
+    //{
+    //    m_skipProgress = true;
+    //}
     updateProgress();
 }
 
 void RestoreViewModel::onNodeSyncProgressUpdated(int done, int total)
 {
-    if (!m_walletConnected) // ignore node progress if wallet is connected
+    //if (!m_walletConnected) // ignore node progress if wallet is connected
     {
         m_nodeDone = done;
         m_nodeTotal = total;
-        if (done == 0 && total == 0)
-        {
-            m_skipProgress = true;
-        }
+        //if (done == 0 && total == 0)
+        //{
+        //    m_skipProgress = true;
+        //}
         updateProgress();
     }
 }
 
-void RestoreViewModel::cancelRestore()
+void RestoreViewModel::resetWallet()
 {
-    AppModel::getInstance()->cancelRestoreWallet();
+    AppModel::getInstance()->resetWallet();
 }
 
 void RestoreViewModel::updateProgress()
 {
-    double nodeSyncProgress = 0.0;
-    QString progressMessage = tr("Waiting for node data...");
-    if (m_nodeTotal > 0)
-    {
-        int blocksDiff = m_nodeTotal / 2;
-        if (m_nodeDone <= blocksDiff)
-        {
-            progressMessage = QString::asprintf(tr("Downloading block headers %d/%d").toStdString().c_str(), m_nodeDone, blocksDiff);
-        }
-        else
-        {
-            progressMessage = QString::asprintf(tr("Downloading blocks %d/%d").toStdString().c_str(), m_nodeDone - blocksDiff, blocksDiff);
-        }
-        nodeSyncProgress = static_cast<double>(m_nodeDone) / m_nodeTotal;
-    }
-    
-    if (nodeSyncProgress >= 1.0 && m_walletConnected == false)
-    {
-        syncWithNode();
-    }
+    double nodeSyncProgress = 0.;
+	double walletSyncProgress = 0.;
 
-    double walletSyncProgress = 0.0;
-    if (m_walletConnected && m_total)
-    {
-        progressMessage = QString::asprintf(tr("Scanning UTXO %d/%d").toStdString().c_str(), m_done, m_total);
-        walletSyncProgress = static_cast<double>(m_done) / m_total;
-    }
-    double p = 0.0;
-    if (AppModel::getInstance()->getSettings().getRunLocalNode())
-    {
-        p = nodeSyncProgress * 0.7 + walletSyncProgress * 0.3;
-    }
-    else
-    {
-        p = walletSyncProgress;
-    }
+	if (m_nodeTotal > 0)
+		nodeSyncProgress = std::min(1., static_cast<double>(m_nodeDone) / static_cast<double>(m_nodeTotal));
+
+	if (m_total > 0)
+		walletSyncProgress = std::min(1., static_cast<double>(m_done) / static_cast<double>(m_total));
+
+	bool bLocalNode = AppModel::getInstance()->getSettings().getRunLocalNode();
+	QString progressMessage = tr("");
+
+	if (bLocalNode && (!m_nodeTotal || (m_nodeDone < m_nodeTotal)))
+		progressMessage = tr("Downloading blocks...");
+	else
+	{
+		if (!m_walletConnected)
+			syncWithNode();
+
+		if (m_done < m_total)
+			progressMessage = QString::asprintf(tr("Scanning UTXO %d/%d").toStdString().c_str(), m_done, m_total);
+		else
+		{
+			m_updateTimer.stop();
+			emit syncCompleted();
+		}
+	}
+    
+    double p = bLocalNode ?
+		(nodeSyncProgress * 0.7 + walletSyncProgress * 0.3) :
+		walletSyncProgress;
 
     auto currentTime = GetTime_ms();
     uint64_t timeDelta = currentTime - m_prevUpdateTimeMs;
@@ -176,7 +172,8 @@ void RestoreViewModel::updateProgress()
 
     setProgressMessage(progressMessage);
     setProgress(p);
-    if (p >= 1.0 || m_skipProgress)
+
+    if (m_skipProgress)
     {
         m_updateTimer.stop();
         emit syncCompleted();
@@ -210,6 +207,20 @@ void RestoreViewModel::setProgressMessage(const QString& value)
     }
 }
 
+void RestoreViewModel::setIsCreating(bool value)
+{
+    if (m_isCreating != value)
+    {
+        m_isCreating = value;
+        emit isCreatingChanged();
+    }
+}
+
+bool RestoreViewModel::getIsCreating() const
+{
+    return m_isCreating;
+}
+
 void RestoreViewModel::syncWithNode()
 {
     m_walletModel.getAsync()->syncWithNode();
@@ -225,8 +236,14 @@ void RestoreViewModel::onNodeConnectionChanged(bool isNodeConnected)
     m_walletConnected = isNodeConnected;
 }
 
-void RestoreViewModel::onNodeConnectionFailed()
+void RestoreViewModel::onGetWalletError(beam::wallet::ErrorType error)
 {
+    if (beam::wallet::ErrorType::NodeProtocolIncompatible == error && m_isCreating)
+    {
+        emit walletError(tr("Incompatible peer"), WalletModel::GetErrorString(error));
+        return;
+    }
+
     m_skipProgress = true;
     updateProgress();
 }

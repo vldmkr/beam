@@ -89,7 +89,7 @@ int main_impl(int argc, char* argv[])
 
 	try
 	{
-		auto options = createOptionsDescription(GENERAL_OPTIONS | NODE_OPTIONS);
+		auto [options, visibleOptions] = createOptionsDescription(GENERAL_OPTIONS | NODE_OPTIONS);
 
 		po::variables_map vm;
 		try
@@ -99,14 +99,14 @@ int main_impl(int argc, char* argv[])
 		catch (const po::error& e)
 		{
 			cout << e.what() << std::endl;
-			printHelp(options);
+			printHelp(visibleOptions);
 
 			return 0;
 		}
 
 		if (vm.count(cli::HELP))
 		{
-			printHelp(options);
+			printHelp(visibleOptions);
 
 			return 0;
 		}
@@ -183,15 +183,54 @@ int main_impl(int argc, char* argv[])
 					node.m_Cfg.m_MiningThreads = vm[cli::MINING_THREADS].as<uint32_t>();
 #endif
 					node.m_Cfg.m_VerificationThreads = vm[cli::VERIFICATION_THREADS].as<int>();
-					if (node.m_Cfg.m_MiningThreads > 0 || stratumServer)
-					{
-						ECC::NoLeak<ECC::uintBig> seed;
-						if (!beam::read_wallet_seed(seed, vm)) {
-                            LOG_ERROR() << " wallet seed is not provided. You have pass wallet seed for mining node.";
-                            return -1;
-                        }
 
-						node.m_Keys.InitSingleKey(seed.V);
+					std::string sKeyOwner;
+					{
+						const auto& var = vm[cli::KEY_OWNER];
+						if (!var.empty())
+							sKeyOwner = var.as<std::string>();
+					}
+					std::string sKeyMine;
+					{
+						const auto& var = vm[cli::KEY_MINE];
+						if (!var.empty())
+							sKeyMine = var.as<std::string>();
+					}
+
+					if (!(sKeyOwner.empty() && sKeyMine.empty()))
+					{
+						SecString pass;
+						if (!beam::read_wallet_pass(pass, vm))
+						{
+							LOG_ERROR() << "Please, provide password for the keys.";
+							return -1;
+						}
+
+						KeyString ks;
+						ks.SetPassword(Blob(pass.data(), static_cast<uint32_t>(pass.size())));
+
+						if (!sKeyMine.empty())
+						{
+							ks.m_sRes = sKeyMine;
+
+							std::shared_ptr<HKdf> pKdf = std::make_shared<HKdf>();
+							if (!ks.Import(*pKdf))
+								throw std::runtime_error("miner key import failed");
+
+							node.m_Keys.m_pMiner = pKdf;
+							node.m_Keys.m_nMinerSubIndex = atoi(ks.m_sMeta.c_str());
+						}
+
+						if (!sKeyOwner.empty())
+						{
+							ks.m_sRes = sKeyOwner;
+
+							std::shared_ptr<HKdfPub> pKdf = std::make_shared<HKdfPub>();
+							if (!ks.Import(*pKdf))
+								throw std::runtime_error("view key import failed");
+
+							node.m_Keys.m_pOwner = pKdf;
+						}
 					}
 
 					std::vector<std::string> vPeers = getCfgPeers(vm);
@@ -238,6 +277,8 @@ int main_impl(int argc, char* argv[])
 					if (vm.count(cli::RESYNC))
 						node.m_Cfg.m_Sync.m_ForceResync = vm[cli::RESYNC].as<bool>();
 
+					node.m_Cfg.m_Bbs = vm[cli::BBS_ENABLE].as<bool>();
+
 					node.Initialize(stratumServer.get());
 
 					Height hImport = vm[cli::IMPORT].as<Height>();
@@ -263,7 +304,7 @@ int main_impl(int argc, char* argv[])
 		catch (const po::error& e)
 		{
 			LOG_ERROR() << e.what();
-			printHelp(options);
+			printHelp(visibleOptions);
 		}
 		catch (const std::runtime_error& e)
 		{

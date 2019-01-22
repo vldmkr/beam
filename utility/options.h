@@ -51,18 +51,26 @@ namespace beam
         extern const char* LISTEN;
         extern const char* TREASURY;
         extern const char* TREASURY_BLOCK;
-		extern const char* RESYNC;
-		extern const char* CRASH;
-		extern const char* INIT;
+        extern const char* RESYNC;
+        extern const char* CRASH;
+        extern const char* INIT;
+        extern const char* RESTORE;
+        extern const char* EXPORT_MINER_KEY;
+        extern const char* EXPORT_OWNER_KEY;
+        extern const char* KEY_SUBKEY;
+        extern const char* KEY_OWNER;
+        extern const char* KEY_MINE;
+        extern const char* BBS_ENABLE;
         extern const char* NEW_ADDRESS;
         extern const char* CANCEL_TX;
         extern const char* SEND;
         extern const char* INFO;
         extern const char* NEW_ADDRESS_LABEL;
+        extern const char* EXPIRATION_TIME;
         extern const char* TX_HISTORY;
         extern const char* TX_ID;
-        extern const char* WALLET_SEED;
-        extern const char* WALLET_PHRASES;
+        extern const char* SEED_PHRASE;
+        extern const char* GENERATE_PHRASE;
         extern const char* FEE;
         extern const char* FEE_FULL;
         extern const char* RECEIVE;
@@ -81,10 +89,12 @@ namespace beam
         extern const char* TR_OPCODE;
         extern const char* TR_WID;
         extern const char* TR_PERC;
-		extern const char* TR_COMMENT;
+        extern const char* TR_COMMENT;
+		extern const char* TR_M;
+		extern const char* TR_N;
 		// ui
         extern const char* WALLET_ADDR;
-		extern const char* APPDATA_PATH;
+        extern const char* APPDATA_PATH;
     }
 
     enum OptionsFlag : int
@@ -97,17 +107,15 @@ namespace beam
         ALL_OPTIONS     = GENERAL_OPTIONS | NODE_OPTIONS | WALLET_OPTIONS | UI_OPTIONS
     };
 
-    po::options_description createOptionsDescription(int flags = ALL_OPTIONS);
+    std::pair<po::options_description, po::options_description> createOptionsDescription(int flags = ALL_OPTIONS);
 
-    po::variables_map getOptions(int argc, char* argv[], const char* configFile, const po::options_description& options);
+    po::variables_map getOptions(int argc, char* argv[], const char* configFile, const po::options_description& options, bool walletOptions = false);
 
     int getLogLevel(const std::string &dstLog, const po::variables_map& vm, int defaultValue = LOG_LEVEL_DEBUG);
 
-	std::vector<std::string> getCfgPeers(const po::variables_map& vm);
+    std::vector<std::string> getCfgPeers(const po::variables_map& vm);
 
     class SecString;
 
-    bool read_wallet_seed(ECC::NoLeak<ECC::uintBig>& walletSeed, po::variables_map& vm);
-
-    bool read_wallet_pass(SecString& pass, po::variables_map& vm);
+    bool read_wallet_pass(SecString& pass, const po::variables_map& vm);
 }

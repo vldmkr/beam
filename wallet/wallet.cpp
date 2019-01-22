@@ -15,12 +15,6 @@
 #include "wallet.h"
 #include <boost/uuid/uuid.hpp>
 
-// TODO: getrandom not available until API 28 in the Android NDK 17b
-// https://github.com/boostorg/uuid/issues/76
-#if defined(__ANDROID__)
-#define BOOST_UUID_RANDOM_PROVIDER_DISABLE_GETRANDOM 1
-#endif
-
 #include "core/ecc_native.h"
 #include "core/block_crypt.h"
 #include "utility/logger.h"
@@ -35,8 +29,19 @@ namespace std
     string to_string(const beam::WalletID& id)
     {
         static_assert(sizeof(id) == sizeof(id.m_Channel) + sizeof(id.m_Pk), "");
-        return beam::to_hex(&id, sizeof(id));
-    }
+
+		char szBuf[sizeof(id) * 2 + 1];
+		beam::to_hex(szBuf, &id, sizeof(id));
+
+		const char* szPtr = szBuf;
+		while (*szPtr == '0')
+			szPtr++;
+
+		if (!*szPtr)
+			szPtr--; // leave at least 1 symbol
+
+		return szPtr;
+	}
 }
 
 namespace beam
@@ -87,7 +92,7 @@ namespace beam
 
     std::ostream& operator<<(std::ostream& os, const PrintableAmount& amount)
     {
-        const string_view beams{" beams " };
+        const string_view beams{ " beams " };
         const string_view chattles{ " groth " };
         auto width = os.width();
 
@@ -99,7 +104,7 @@ namespace beam
                 << beams.data();
             return os;
         }
-        
+
         if (amount.m_value >= Rules::Coin)
         {
             os << setw(width - beams.length()) << Amount(amount.m_value / Rules::Coin) << beams.data();
@@ -112,7 +117,7 @@ namespace beam
         return os;
     }
 
-    const char Wallet::s_szLastUtxoEvt[] = "LastUtxoEvent";
+    const char Wallet::s_szNextUtxoEvt[] = "NextUtxoEvent";
 
     Wallet::Wallet(IWalletDB::Ptr walletDB, TxCompletedAction&& action)
         : m_WalletDB{ walletDB }
@@ -432,7 +437,7 @@ namespace beam
 
         proto::UtxoEvent evt;
         evt.m_Added = 1;
-        evt.m_Kidvc = r.m_CoinID;
+        evt.m_Kidv = r.m_CoinID;
         evt.m_Maturity = proof.m_State.m_Maturity;
         evt.m_Height = sTip.m_Height;
 
@@ -472,12 +477,10 @@ namespace beam
         Block::SystemState::Full sTip;
         m_WalletDB->get_History().get_Tip(sTip);
 
-        Height h = GetUtxoEventsHeight();
-        assert(h <= sTip.m_Height);
-        if (h >= sTip.m_Height)
+        Height h = GetUtxoEventsHeightNext();
+        assert(h <= sTip.m_Height + 1);
+        if (h > sTip.m_Height)
             return;
-
-        ++h;
 
         if (!m_PendingUtxoEvents.empty())
         {
@@ -503,8 +506,18 @@ namespace beam
         m_WalletDB->get_History().get_Tip(sTip);
 
         const std::vector<proto::UtxoEvent>& v = r.m_Res.m_Events;
-        for (size_t i = 0; i < v.size(); i++)
-            ProcessUtxoEvent(v[i], sTip.m_Height);
+		for (size_t i = 0; i < v.size(); i++)
+		{
+			const proto::UtxoEvent& evt = v[i];
+
+			// filter-out false positives
+			Scalar::Native sk;
+			Point comm;
+			m_WalletDB->calcCommitment(sk, comm, evt.m_Kidv);
+
+			if (comm == evt.m_Commitment)
+				ProcessUtxoEvent(evt, sTip.m_Height);
+		}
 
         if (r.m_Res.m_Events.size() < proto::UtxoEvent::s_Max)
             SetUtxoEventsHeight(sTip.m_Height);
@@ -518,14 +531,14 @@ namespace beam
     void Wallet::SetUtxoEventsHeight(Height h)
     {
         uintBigFor<Height>::Type var;
-        var = h;
-        wallet::setVar(m_WalletDB, s_szLastUtxoEvt, var);
+        var = h + 1; // we're actually saving the next
+        wallet::setVar(m_WalletDB, s_szNextUtxoEvt, var);
     }
 
-    Height Wallet::GetUtxoEventsHeight()
+    Height Wallet::GetUtxoEventsHeightNext()
     {
         uintBigFor<Height>::Type var;
-        if (!wallet::getVar(m_WalletDB, s_szLastUtxoEvt, var))
+        if (!wallet::getVar(m_WalletDB, s_szNextUtxoEvt, var))
             return 0;
 
         Height h;
@@ -536,14 +549,14 @@ namespace beam
     void Wallet::ProcessUtxoEvent(const proto::UtxoEvent& evt, Height hTip)
     {
         Coin c;
-        c.m_ID = evt.m_Kidvc;
+        c.m_ID = evt.m_Kidv;
 
         bool bExists = m_WalletDB->find(c);
 
         const TxID* pTxID = NULL;
 
 
-        LOG_INFO() << "CoinID: " << evt.m_Kidvc << " Maturity=" << evt.m_Maturity << (evt.m_Added ? " Confirmed" : " Spent");
+        LOG_INFO() << "CoinID: " << evt.m_Kidv << " Maturity=" << evt.m_Maturity << (evt.m_Added ? " Confirmed" : " Spent");
 
         if (evt.m_Added)
         {
@@ -612,8 +625,8 @@ namespace beam
             }
         }
 
-        Height h = GetUtxoEventsHeight();
-        if (h > sTip.m_Height)
+        Height h = GetUtxoEventsHeightNext();
+        if (h > sTip.m_Height + 1)
             SetUtxoEventsHeight(sTip.m_Height);
     }
 
@@ -686,7 +699,10 @@ namespace beam
     {
         MyRequestUtxo::Ptr pReq(new MyRequestUtxo);
         pReq->m_CoinID = cid;
-        pReq->m_Msg.m_Utxo = Commitment(m_WalletDB->calcKey(cid), cid.m_Value);
+
+		Scalar::Native sk;
+		m_WalletDB->calcCommitment(sk, pReq->m_Msg.m_Utxo, cid);
+
         LOG_DEBUG() << "Get utxo proof: " << pReq->m_Msg.m_Utxo;
 
         PostReqUnique(*pReq);

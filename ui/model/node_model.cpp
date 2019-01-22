@@ -15,6 +15,7 @@
 #include "node_model.h"
 #include "app_model.h"
 #include "node/node.h"
+#include <mutex>
 
 using namespace beam;
 using namespace beam::io;
@@ -26,6 +27,9 @@ namespace
 }
 
 NodeModel::NodeModel()
+    : m_shouldStartNode(false)
+    , m_shouldTerminateModel(false)
+    , m_isRunning(false)
 {
 }
 
@@ -33,6 +37,8 @@ NodeModel::~NodeModel()
 {
     try
     {
+        m_shouldTerminateModel = true;
+        m_waiting.notify_all();
         {
             auto r = m_reactor.lock();
             if (!r)
@@ -40,7 +46,6 @@ NodeModel::~NodeModel()
                 return;
             }
             r->stop();
-
         }
         wait();
     }
@@ -48,6 +53,32 @@ NodeModel::~NodeModel()
     {
 
     }
+}
+
+void NodeModel::setKdf(beam::Key::IKdf::Ptr kdf)
+{
+    m_pKdf = kdf;
+}
+
+void NodeModel::startNode()
+{
+    m_shouldStartNode = true;
+    m_waiting.notify_all();
+}
+
+void NodeModel::stopNode()
+{
+    m_shouldStartNode = false;
+    auto reactor = m_reactor.lock();
+    if (reactor)
+    {
+        reactor->stop();
+    }
+}
+
+bool NodeModel::isNodeRunning() const
+{
+    return m_isRunning;
 }
 
 void NodeModel::run()
@@ -58,59 +89,34 @@ void NodeModel::run()
         m_reactor = reactor;// store weak ref
         io::Reactor::Scope scope(*reactor);
 
-        auto& settings = AppModel::getInstance()->getSettings();
+        mutex localMutex;
 
-        Node node;
-        node.m_Cfg.m_Listen.port(settings.getLocalNodePort());
-        node.m_Cfg.m_Listen.ip(INADDR_ANY);
-        node.m_Cfg.m_sPathLocal = settings.getLocalNodeStorage();
+        while (!m_shouldTerminateModel)
         {
-#ifdef BEAM_USE_GPU
-            if (settings.getUseGpu())
+            if (!m_shouldStartNode)
             {
-                node.m_Cfg.m_UseGpu = true;
-                node.m_Cfg.m_MiningThreads = 1;
+                unique_lock<mutex> lock(localMutex);
+
+                while (!m_shouldStartNode && !m_shouldTerminateModel)
+                {
+                    m_waiting.wait(lock);
+                }
             }
-            else
+
+            if (!m_shouldTerminateModel)
             {
-                node.m_Cfg.m_UseGpu = false;
-                node.m_Cfg.m_MiningThreads = settings.getLocalNodeMiningThreads();
-            }
-#else
-            node.m_Cfg.m_MiningThreads = settings.getLocalNodeMiningThreads();
-#endif
-            node.m_Cfg.m_VerificationThreads = kVerificationThreadsMaxAvailable;
-        }
-
-        node.m_Keys.SetSingleKey(m_pKdf);
-
-
-        node.m_Cfg.m_HistoryCompression.m_sPathOutput = settings.getTempDir();
-        node.m_Cfg.m_HistoryCompression.m_sPathTmp = settings.getTempDir();
-
-        auto qPeers = settings.getLocalNodePeers();
-
-        for (const auto& qPeer : qPeers)
-        {
-            Address peer_addr;
-            if (peer_addr.resolve(qPeer.toStdString().c_str()))
-            {
-                node.m_Cfg.m_Connect.emplace_back(peer_addr);
+                try
+                {
+                    m_shouldStartNode = false;
+                    runLocalNode();
+                }
+                catch (const runtime_error& ex)
+                {
+                    LOG_ERROR() << ex.what();
+                    AppModel::getInstance()->getMessages().addMessage(tr("Failed to start node. Please check your node configuration"));
+                }
             }
         }
-
-        LOG_INFO() << "starting a node on " << node.m_Cfg.m_Listen.port() << " port...";
-
-        node.m_Cfg.m_Observer = this;
-
-        node.Initialize();
-
-        reactor->run();
-    }
-    catch (const runtime_error& ex)
-    {
-        LOG_ERROR() << ex.what();
-        AppModel::getInstance()->getMessages().addMessage(tr("Failed to start node. Please check your node configuration"));
     }
     catch (...)
     {
@@ -118,7 +124,85 @@ void NodeModel::run()
     }
 }
 
-void NodeModel::OnSyncProgress(int done, int total)
+void NodeModel::runLocalNode()
 {
-    emit syncProgressUpdated(done, total);
+    auto& settings = AppModel::getInstance()->getSettings();
+
+    Node node;
+    node.m_Cfg.m_Listen.port(settings.getLocalNodePort());
+    node.m_Cfg.m_Listen.ip(INADDR_ANY);
+    node.m_Cfg.m_sPathLocal = settings.getLocalNodeStorage();
+    {
+#ifdef BEAM_USE_GPU
+        if (settings.getUseGpu())
+        {
+            node.m_Cfg.m_UseGpu = true;
+            node.m_Cfg.m_MiningThreads = 1;
+        }
+        else
+        {
+            node.m_Cfg.m_UseGpu = false;
+            node.m_Cfg.m_MiningThreads = settings.getLocalNodeMiningThreads();
+        }
+#else
+        node.m_Cfg.m_MiningThreads = settings.getLocalNodeMiningThreads();
+#endif
+        node.m_Cfg.m_VerificationThreads = kVerificationThreadsMaxAvailable;
+    }
+
+    node.m_Keys.SetSingleKey(m_pKdf);
+
+    node.m_Cfg.m_HistoryCompression.m_sPathOutput = settings.getTempDir();
+    node.m_Cfg.m_HistoryCompression.m_sPathTmp = settings.getTempDir();
+
+    auto qPeers = settings.getLocalNodePeers();
+
+    for (const auto& qPeer : qPeers)
+    {
+        Address peer_addr;
+        if (peer_addr.resolve(qPeer.toStdString().c_str()))
+        {
+            node.m_Cfg.m_Connect.emplace_back(peer_addr);
+        }
+    }
+
+    LOG_INFO() << "starting a node on " << node.m_Cfg.m_Listen.port() << " port...";
+
+	struct MyObserver
+		:public Node::IObserver
+	{
+		Node* m_pNode;
+		NodeModel* m_pModel;
+
+		void OnSyncProgress() override
+		{
+			// make sure no overflow during conversion from SyncStatus to int,int.
+			Node::SyncStatus s = m_pNode->m_SyncStatus;
+
+			unsigned int nThreshold = static_cast<unsigned int>(std::numeric_limits<int>::max());
+			while (s.m_Total > nThreshold)
+			{
+				s.m_Total >>= 1;
+				s.m_Done >>= 1;
+			}
+
+			emit m_pModel->syncProgressUpdated(static_cast<int>(s.m_Done), static_cast<int>(s.m_Total));
+		}
+
+	} obs;
+
+	obs.m_pNode = &node;
+	obs.m_pModel = this;
+
+    node.m_Cfg.m_Observer = &obs;
+
+    node.Initialize();
+
+	m_isRunning = true;
+	emit startedNode();
+
+	io::Reactor::get_Current().run();
+
+	m_isRunning = false;
+	emit stoppedNode();
 }

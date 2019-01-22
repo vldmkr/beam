@@ -21,8 +21,9 @@
 #include "wallet/secstring.h"
 #include <memory>
 
-class AppModel
+class AppModel : public QObject
 {
+    Q_OBJECT
 public:
 
     static AppModel* getInstance();
@@ -44,16 +45,20 @@ public:
     WalletSettings& getSettings();
     MessageManager& getMessages();
     NodeModel& getNode();
-    void cancelRestoreWallet();
+    void resetWallet();
+
+public slots:
+    void stoppedNode();
+
 private:
     void start();
-
-    void startNode();
+	void OnWalledOpened(const beam::SecString& pass);
+    void resetWalletImpl();
 
 private:
 
     WalletModel::Ptr m_wallet;
-    std::unique_ptr<NodeModel> m_node;
+    NodeModel m_nodeModel;
     WalletSettings& m_settings;
     MessageManager m_messages;
 	ECC::NoLeak<ECC::uintBig> m_passwordHash;

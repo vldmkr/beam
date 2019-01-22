@@ -22,7 +22,6 @@
 #include "qrcode/QRCodeGenerator.h"
 #include <QtGui/qimage.h>
 #include <QtCore/qbuffer.h>
-#include "version.h"
 
 using namespace beam;
 using namespace std;
@@ -41,7 +40,11 @@ namespace
     }
 }
 
-TxObject::TxObject(const TxDescription& tx) : _tx(tx) {}
+TxObject::TxObject(const TxDescription& tx) : _tx(tx) 
+{
+    auto kernelID = QString::fromStdString(to_hex(_tx.m_kernelID.m_pData, _tx.m_kernelID.nBytes));
+    setKernelID(kernelID);
+}
 
 bool TxObject::income() const
 {
@@ -169,9 +172,25 @@ void TxObject::setStatus(beam::TxStatus status)
     }
 }
 
+QString TxObject::getKernelID() const
+{
+    return _kernelID;
+}
+
+void TxObject::setKernelID(const QString& value)
+{
+    if (_kernelID != value)
+    {
+        _kernelID = value;
+        emit kernelIDChanged();
+    }
+}
+
 void TxObject::update(const beam::TxDescription& tx)
 {
     setStatus(tx.m_status);
+    auto kernelID = QString::fromStdString(to_hex(tx.m_kernelID.m_pData, tx.m_kernelID.nBytes));
+    setKernelID(kernelID);
 }
 
 WalletViewModel::WalletViewModel()
@@ -180,20 +199,12 @@ WalletViewModel::WalletViewModel()
     , _sendAmount("0")
     , _feeGrothes("0")
     , _change(0)
-    , _isSyncInProgress{false}
-    , _isOfflineStatus{false}
-    , _isFailedStatus{false}
-    , _nodeDone{0}
-    , _nodeTotal{0}
-    , _nodeSyncProgress{0}
+    , _expires(0)
 {
     connect(&_model, SIGNAL(onStatus(const WalletStatus&)), SLOT(onStatus(const WalletStatus&)));
 
     connect(&_model, SIGNAL(onTxStatus(beam::ChangeAction, const std::vector<beam::TxDescription>&)),
         SLOT(onTxStatus(beam::ChangeAction, const std::vector<beam::TxDescription>&)));
-
-    connect(&_model, SIGNAL(onSyncProgressUpdated(int, int)),
-        SLOT(onSyncProgressUpdated(int, int)));
 
     connect(&_model, SIGNAL(onChangeCalculated(beam::Amount)),
         SLOT(onChangeCalculated(beam::Amount)));
@@ -207,17 +218,6 @@ WalletViewModel::WalletViewModel()
     connect(&_model, SIGNAL(onGeneratedNewAddress(const beam::WalletAddress&)),
         SLOT(onGeneratedNewAddress(const beam::WalletAddress&)));
 
-    connect(&_model, SIGNAL(nodeConnectionChanged(bool)),
-        SLOT(onNodeConnectionChanged(bool)));
-
-    connect(&_model, SIGNAL(nodeConnectionFailed()),
-        SLOT(onNodeConnectionFailed()));
-
-    if (AppModel::getInstance()->getSettings().getRunLocalNode())
-    {
-        connect(&AppModel::getInstance()->getNode(), SIGNAL(syncProgressUpdated(int, int)),
-            SLOT(onNodeSyncProgressUpdated(int, int)));
-    }
     _model.getAsync()->getWalletStatus();
 }
 
@@ -253,6 +253,10 @@ void WalletViewModel::generateNewAddress()
 void WalletViewModel::saveNewAddress()
 {
     _newReceiverAddr.m_label = _newReceiverName.toStdString();
+    if (_expires == 1)
+    {
+        _newReceiverAddr.m_duration = 0;
+    }
 
     _model.getAsync()->saveAddress(_newReceiverAddr, true);
 }
@@ -275,23 +279,23 @@ void WalletViewModel::onStatus(const WalletStatus& status)
         emit actualAvailableChanged();
     }
 
-    if (_status.received != status.received)
+    if (_status.receiving != status.receiving)
     {
-        _status.received = status.received;
+        _status.receiving = status.receiving;
 
         changed = true;
     }
 
-    if (_status.sent != status.sent)
+    if (_status.sending != status.sending)
     {
-        _status.sent = status.sent;
+        _status.sending = status.sending;
 
         changed = true;
     }
 
-    if (_status.unconfirmed != status.unconfirmed)
+    if (_status.maturing != status.maturing)
     {
-        _status.unconfirmed = status.unconfirmed;
+        _status.maturing = status.maturing;
 
         changed = true;
     }
@@ -360,35 +364,6 @@ void WalletViewModel::onTxStatus(beam::ChangeAction action, const std::vector<Tx
 
 }
 
-void WalletViewModel::onSyncProgressUpdated(int done, int total)
-{
-    _status.update.done = done;
-    _status.update.total = total;
-    setIsSyncInProgress(!((_status.update.done + _nodeDone) == (_status.update.total + _nodeTotal)));
-    
-    emit stateChanged();
-}
-
-void WalletViewModel::onNodeSyncProgressUpdated(int done, int total)
-{
-    _nodeDone = done;
-    _nodeTotal = total;
-    if (total > 0)
-    {
-        setNodeSyncProgress(static_cast<int>(done * 100) / total);
-    }
-    setIsSyncInProgress(!((_status.update.done + _nodeDone) == (_status.update.total + _nodeTotal)));
-    if (done == total)
-    {
-        auto& settings = AppModel::getInstance()->getSettings();
-        if (!settings.getLocalNodeSynchronized())
-        {
-            settings.setLocalNodeSynchronized(true);
-            settings.applyChanges();
-        }
-    }
-}
-
 void WalletViewModel::onChangeCalculated(beam::Amount change)
 {
     _change = change;
@@ -407,19 +382,19 @@ QString WalletViewModel::available() const
     return BeamToString(_status.available);
 }
 
-QString WalletViewModel::received() const
+QString WalletViewModel::receiving() const
 {
-    return BeamToString(_status.received);
+    return BeamToString(_status.receiving);
 }
 
-QString WalletViewModel::sent() const
+QString WalletViewModel::sending() const
 {
-    return BeamToString(_status.sent);
+    return BeamToString(_status.sending);
 }
 
-QString WalletViewModel::unconfirmed() const
+QString WalletViewModel::maturing() const
 {
-    return BeamToString(_status.unconfirmed);
+    return BeamToString(_status.maturing);
 }
 
 QString WalletViewModel::sendAmount() const
@@ -450,17 +425,6 @@ void WalletViewModel::setReceiverAddr(const QString& value)
 bool WalletViewModel::isValidReceiverAddress(const QString& value) {
     return _model.check_receiver_address(value.toStdString());
 }
-
-/*QString WalletViewModel::getSenderAddr() const
-{
-    return _senderAddr;
-}
-
-void WalletViewModel::setSenderAddr(const QString& value)
-{
-    _senderAddr = value;
-    emit senderAddrChanged();
-}*/
 
 void WalletViewModel::setSendAmount(const QString& value)
 {
@@ -498,14 +462,6 @@ void WalletViewModel::setComment(const QString& value)
 QString WalletViewModel::getComment() const
 {
 	return _comment;
-}
-
-QString WalletViewModel::getBranchName() const
-{
-    if (BRANCH_NAME.empty())
-        return QString();
-
-    return QString::fromStdString(" (" + BRANCH_NAME + ")");
 }
 
 QString WalletViewModel::sortRole() const
@@ -569,72 +525,24 @@ int WalletViewModel::getDefaultFeeInGroth() const
     return kDefaultFeeInGroth;
 }
 
+void WalletViewModel::setExpires(int value)
+{
+    if (value != _expires)
+    {
+        _expires = value;
+        emit expiresChanged();
+    }
+}
+
+int WalletViewModel::getExpires() const
+{
+    return _expires;
+}
+
 QQmlListProperty<TxObject> WalletViewModel::getTransactions()
 {
     return QQmlListProperty<TxObject>(this, _txList);
 }
-
-QString WalletViewModel::syncTime() const
-{
-    return toString(_status.update.lastTime);
-}
-
-bool WalletViewModel::getIsOfflineStatus() const
-{
-    return _isOfflineStatus;
-}
-
-bool WalletViewModel::getIsFailedStatus() const
-{
-    return _isFailedStatus;
-}
-
-void WalletViewModel::setIsOfflineStatus(bool value)
-{
-    if (_isOfflineStatus != value)
-    {
-        _isOfflineStatus = value;
-        emit isOfflineStatusChanged();
-    }
-}
-
-void WalletViewModel::setIsFailedStatus(bool value)
-{
-}
-
-QString WalletViewModel::getWalletStatusErrorMsg() const
-{
-    return QString{};
-}
-
-bool WalletViewModel::getIsSyncInProgress() const
-{
-    return _isSyncInProgress;
-}
-
-void WalletViewModel::setIsSyncInProgress(bool value)
-{
-    if (_isSyncInProgress != value)
-    {
-        _isSyncInProgress = value;
-        emit isSyncInProgressChanged();
-    }
-}
-
-int WalletViewModel::getNodeSyncProgress() const
-{
-    return _nodeSyncProgress;
-}
-
-void WalletViewModel::setNodeSyncProgress(int value)
-{
-    if (_nodeSyncProgress != value)
-    {
-        _nodeSyncProgress = value;
-        emit nodeSyncProgressChanged();
-    }
-}
-
 
 beam::Amount WalletViewModel::calcSendAmount() const
 {
@@ -705,6 +613,7 @@ void WalletViewModel::sendMoney()
         WalletAddress peerAddr;
         peerAddr.m_walletID.FromHex(getReceiverAddr().toStdString());
         peerAddr.m_createTime = getTimestamp();
+        peerAddr.m_label = _comment.toStdString();
 
         // TODO: implement UI for this situation
         // TODO: don't save if you send to yourself
@@ -791,6 +700,7 @@ void WalletViewModel::onGeneratedNewAddress(const beam::WalletAddress& addr)
 {
     _newReceiverAddr = addr;
     _newReceiverAddrQR = "";
+    setExpires(0);
 
     CQR_Encode qrEncode;
     QString strAddr(toString(_newReceiverAddr.m_walletID));
@@ -821,18 +731,4 @@ void WalletViewModel::onGeneratedNewAddress(const beam::WalletAddress& addr)
     }
 
     emit newReceiverAddrChanged();
-    saveNewAddress();
-}
-
-void WalletViewModel::onNodeConnectionChanged(bool isNodeConnected)
-{
-    if (isNodeConnected && getIsOfflineStatus())
-    {
-        setIsOfflineStatus(false);
-    }
-}
-
-void WalletViewModel::onNodeConnectionFailed()
-{
-    setIsOfflineStatus(true);
 }
