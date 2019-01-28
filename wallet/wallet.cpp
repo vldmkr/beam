@@ -418,7 +418,7 @@ namespace beam
             kernel.get_ID(pVal->m_Msg.m_ID);
 
             if (PostReqUnique(*pVal))
-                LOG_INFO() << "Get proof for kernel: " << pVal->m_Msg.m_ID;
+                LOG_INFO() << txID << " Get proof for kernel: " << pVal->m_Msg.m_ID;
         }
     }
 
@@ -555,6 +555,7 @@ namespace beam
         {
             Block::SystemState::Full sTip;
             get_tip(sTip);
+            LOG_DEBUG() << r.m_TxID << " Unconfirmed height: " << sTip.m_Height;
             tx->SetParameter(TxParameterID::KernelUnconfirmedHeight, sTip.m_Height);
         }
     }

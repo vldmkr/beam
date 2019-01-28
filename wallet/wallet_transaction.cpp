@@ -160,6 +160,7 @@ namespace beam { namespace wallet
         if (GetParameter(TxParameterID::KernelProofHeight, kernelConfirmHeight) && kernelConfirmHeight > 0)
         {
             // completed tx
+            LOG_DEBUG() << GetTxID() << " Check expired: Completed.";
             return false;
         }
 
@@ -170,6 +171,7 @@ namespace beam { namespace wallet
         Merkle::Hash kernelID;
         if (!GetParameter(TxParameterID::TransactionRegistered, isRegistered) || !GetParameter(TxParameterID::KernelID, kernelID))
         {
+            LOG_DEBUG() << GetTxID() << " Check expired: Unregistered.";
             Block::SystemState::Full state;
             if (GetTip(state) && state.m_Height > maxHeight)
             {
@@ -180,9 +182,11 @@ namespace beam { namespace wallet
         }
         else
         {
+            LOG_DEBUG() << GetTxID() << " Check expired: Registered.";
             Height lastUnconfirmedHeight = 0;
             if (GetParameter(TxParameterID::KernelUnconfirmedHeight, lastUnconfirmedHeight) && lastUnconfirmedHeight > 0)
             {
+                LOG_DEBUG() << GetTxID() << " Check expired. lastUnconfirmedHeight: " << lastUnconfirmedHeight;
                 if (lastUnconfirmedHeight >= maxHeight)
                 {
                     LOG_INFO() << GetTxID() << " Transaction expired. Last unconfirmeed height: " << lastUnconfirmedHeight << ", max kernel height: " << maxHeight;
@@ -400,6 +404,7 @@ namespace beam { namespace wallet
                     SetParameter(TxParameterID::TransactionRegistered, true);
 
                     SetState(State::KernelConfirmation);
+                    LOG_DEBUG() << GetTxID() << " New peer asks for kernel confirmation";
                     ConfirmKernel(builder.GetKernel());
                 }
                 else
@@ -514,6 +519,7 @@ namespace beam { namespace wallet
                 }
             }
             SetState(State::KernelConfirmation);
+            LOG_DEBUG() << GetTxID() << " Initiaor asks for kernel confirmation";
             ConfirmKernel(builder.GetKernel());
             return;
         }
@@ -612,6 +618,7 @@ namespace beam { namespace wallet
         if (GetParameter(TxParameterID::PeerProtoVersion, nVer))
         {
             // we skip this step for new tx flow
+            LOG_DEBUG() << GetTxID() << " Newer wallet, skip signature. Kernel: " << builder.GetKernelIDString();
             return;
         }
         LOG_INFO() << GetTxID() << " Peer signature is valid. Kernel: " << builder.GetKernelIDString();
@@ -683,7 +690,7 @@ namespace beam { namespace wallet
         auto coins = m_Tx.GetWalletDB()->selectCoins(amountWithFee);
         if (coins.empty())
         {
-            LOG_ERROR() << m_Tx.GetTxID() << "You only have " << PrintableAmount(m_Tx.GetWalletDB()->getAvailable());
+            LOG_ERROR() << m_Tx.GetTxID() << " You only have " << PrintableAmount(m_Tx.GetWalletDB()->getAvailable());
             throw TransactionFailedException(!m_Tx.IsInitiator(), TxFailureReason::NoInputs);
         }
 
@@ -813,7 +820,7 @@ namespace beam { namespace wallet
     {
         if (m_Tx.GetParameter(TxParameterID::PeerSignature, m_PeerSignature))
         {
-            LOG_DEBUG() << m_Tx.GetTxID() << "Received PeerSig:\t" << Scalar(m_PeerSignature);
+            LOG_DEBUG() << m_Tx.GetTxID() << " Received PeerSig:\t" << Scalar(m_PeerSignature);
             return true;
         }
         
@@ -853,6 +860,7 @@ namespace beam { namespace wallet
         m_MultiSig.SignPartial(m_PartialSignature, m_Message, m_BlindingExcess);
 
         StoreKernelID();
+        LOG_DEBUG() << m_Tx.GetTxID() << " Signed partial. Kernel: " << GetKernelIDString();
     }
 
     void TxBuilder::FinalizeSignature()
@@ -862,6 +870,7 @@ namespace beam { namespace wallet
         m_Kernel->m_Signature.m_k = m_PartialSignature + m_PeerSignature;
         
         StoreKernelID();
+        LOG_DEBUG() << m_Tx.GetTxID() << " Finiliazed kernel signature. Kernel: " << GetKernelIDString();
     }
 
     Transaction::Ptr TxBuilder::CreateTransaction()
