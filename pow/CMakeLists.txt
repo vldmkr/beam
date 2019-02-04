@@ -14,35 +14,7 @@ if(UNIX)
     set_source_files_properties(impl/crypto/equihash_impl.cpp PROPERTIES COMPILE_FLAGS -O2)
 endif()
 
-if(BEAM_USE_GPU)
-
-    find_package(OpenCL REQUIRED)
-
-    if(OpenCL_FOUND)
-        include_directories(${OpenCL_INCLUDE_DIRS})
-        link_directories(${OpenCL_LIBRARIES})
-        message(STATUS "Using OpenCL ${OpenCL_VERSION_STRING}")
-    else()
-        message(FATAL_ERROR "error, OpenCL not found")
-    endif()
-
-    include(bin2h.cmake)
-
-    bin2h(SOURCE_FILE ${PROJECT_SOURCE_DIR}/3rdparty/opencl-miner/equihash_150_5.cl HEADER_FILE ${PROJECT_SOURCE_DIR}/3rdparty/opencl-miner/equihash_150_5.dat)
-
-    set(POW_SRC ${POW_SRC}
-        ${PROJECT_SOURCE_DIR}/pow/opencl_pow.cpp
-        ${PROJECT_SOURCE_DIR}/3rdparty/opencl-miner/clHost.cpp)
-
-    add_library(pow STATIC ${POW_SRC})
-
-    target_include_directories(pow PRIVATE ${PROJECT_SOURCE_DIR}/3rdparty/opencl-miner)
-    target_include_directories(pow PRIVATE ${PROJECT_SOURCE_DIR}/3rdparty/opencl-miner/clHeaders)
-
-    target_link_libraries(pow OpenCL::OpenCL)
-else()
-    add_library(pow STATIC ${POW_SRC})
-endif()
+add_library(pow STATIC ${POW_SRC})
 
 target_compile_definitions(pow PRIVATE ENABLE_MINING)
 
@@ -50,6 +22,34 @@ add_dependencies(pow crypto)
 target_link_libraries(pow crypto)
 
 target_include_directories(pow PRIVATE ${PROJECT_SOURCE_DIR}/3rdparty/crypto)
+
+add_library(gpu_tools STATIC gpu_tools.cpp)
+target_include_directories(gpu_tools PRIVATE ${PROJECT_SOURCE_DIR}/3rdparty/opencl-miner/clHeaders)
+
+find_package(OpenCL)
+
+if(OpenCL_FOUND)
+    include_directories(${OpenCL_INCLUDE_DIRS})
+    link_directories(${OpenCL_LIBRARIES})
+    message(STATUS "Using OpenCL ${OpenCL_VERSION_STRING}")
+
+    include(bin2h.cmake)
+    bin2h(SOURCE_FILE ${PROJECT_SOURCE_DIR}/3rdparty/opencl-miner/equihash_150_5.cl HEADER_FILE ${PROJECT_SOURCE_DIR}/3rdparty/opencl-miner/equihash_150_5.dat)
+
+    set(POW_OPENCL_SRC
+        ${PROJECT_SOURCE_DIR}/pow/opencl_pow.cpp
+        ${PROJECT_SOURCE_DIR}/3rdparty/opencl-miner/clHost.cpp)
+
+    add_library(pow_opencl SHARED ${POW_OPENCL_SRC})
+    target_include_directories(pow_opencl PRIVATE ${PROJECT_SOURCE_DIR}/3rdparty/opencl-miner)
+    target_include_directories(pow_opencl PRIVATE ${PROJECT_SOURCE_DIR}/3rdparty/opencl-miner/clHeaders)
+
+    target_link_libraries(pow_opencl OpenCL::OpenCL)
+    target_compile_definitions(pow_opencl PRIVATE ENABLE_MINING)
+else()
+    message(STATUS "~~~~~~~~~~~~~~~~~~~~~~~~OpenCL not found~~~~~~~~~~~~~~~~~~~~~~~~~")
+endif()
+
 
 add_library(external_pow STATIC
     external_pow_stub.cpp
