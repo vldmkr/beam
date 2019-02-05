@@ -24,6 +24,7 @@
 #include "utility/io/errorhandling.h"
 #include "utility/io/reactor.h"
 #include "wallet/common.h"
+#include "pow/opencl_frontend.h"
 
 class NodeModel 
     : public QObject
@@ -59,10 +60,9 @@ protected:
     std::string getLocalNodeStorage() override;
     std::string getTempDir() override;
     std::vector<std::string> getLocalNodePeers() override;
-#ifdef BEAM_USE_GPU
     std::unique_ptr<beam::IExternalPOW> getStratumServer() override;
-#endif //  BEAM_USE_GPU
 
 private:
     beam::NodeClient m_nodeClient;
+    std::unique_ptr<beam::OpenCLFrontend> m_openCLFrontend;
 };

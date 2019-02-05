@@ -13,19 +13,21 @@
 // limitations under the License.
 
 #pragma once
-
+//#include <boost/dll.hpp>
 #include <vector>
 #include <string>
 
 namespace beam
 {
-    bool HasSupportedCard();
-
-    struct GpuInfo 
+    struct GpuInfo
     {
         std::string name;
         size_t index;
     };
 
-    std::vector<GpuInfo> GetSupportedCards();
+    //class IExternalPOW;
+
+    //std::vector<GpuInfo> GetSupportedCards();
+
+    //IExternalPOW* create_opencl_solver(const std::vector<int32_t>& devices);
 }

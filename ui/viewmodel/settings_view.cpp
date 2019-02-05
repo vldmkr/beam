@@ -20,12 +20,9 @@
 #include "model/app_model.h"
 #include <thread>
 #include "wallet/secstring.h"
+#include "pow/opencl_frontend.h"
 
 #include <algorithm>
-
-#ifdef BEAM_USE_GPU
-#include "utility/gpu/gpu_tools.h"
-#endif
 
 using namespace beam;
 using namespace ECC;
@@ -194,40 +191,35 @@ QQmlListProperty<DeviceItem> SettingsViewModel::getSupportedDevices()
 
 bool SettingsViewModel::hasSupportedGpu()
 {
-#ifdef BEAM_USE_GPU
-    if (!m_hasSupportedGpu.is_initialized())
+    if (m_hasSupportedGpu.is_initialized())
     {
-        m_hasSupportedGpu = HasSupportedCard();
+        return *m_hasSupportedGpu;
     }
-    if (*m_hasSupportedGpu == false)
-    {
+
+    OpenCLFrontend f;
+    if (!f.loaded()) {
         setUseGpu(false);
+        m_hasSupportedGpu = false;
         return false;
     }
 
-    if (m_supportedDevices.empty())
+    auto selectedDevices = m_settings.getMiningDevices();
+    auto cards = f.GetSupportedCards();
+    for (const auto& card : cards)
     {
-        auto selectedDevices = m_settings.getMiningDevices();
-        auto cards = GetSupportedCards();
-        for (const auto& card : cards)
-        {
-            bool enabled = find(selectedDevices.begin(), selectedDevices.end(), card.index) != selectedDevices.end();
-            m_supportedDevices.push_back(new DeviceItem(QString::fromStdString(card.name), (int32_t)card.index, enabled));
-        }
+        bool enabled = find(selectedDevices.begin(), selectedDevices.end(), card.index) != selectedDevices.end();
+        m_supportedDevices.push_back(new DeviceItem(QString::fromStdString(card.name), (int32_t)card.index, enabled));
     }
 
+    m_hasSupportedGpu = true;
+    setUseGpu(true);
     return true;
-#else
-    return false;
-#endif
 }
 
 void SettingsViewModel::refreshWallet()
 {
     AppModel::getInstance()->getWallet()->getAsync()->refresh();
 }
-
-#ifdef BEAM_USE_GPU
 
 vector<int32_t> SettingsViewModel::getSelectedDevice() const
 {
@@ -243,22 +235,15 @@ vector<int32_t> SettingsViewModel::getSelectedDevice() const
     return v;
 }
 
-#endif
-
-
 bool SettingsViewModel::isChanged() const
 {
     return m_nodeAddress != m_settings.getNodeAddress()
         || m_localNodeRun != m_settings.getRunLocalNode()
         || m_localNodePort != m_settings.getLocalNodePort()
         || m_localNodePeers != m_settings.getLocalNodePeers()
-#ifdef BEAM_USE_GPU
         || m_lockTimeout != m_settings.getLockTimeout()
         || m_useGpu != m_settings.getUseGpu()
         || (!m_supportedDevices.empty() && m_settings.getMiningDevices() != getSelectedDevice());
-#else
-        || m_lockTimeout != m_settings.getLockTimeout();
-#endif
 }
 
 
@@ -269,11 +254,9 @@ void SettingsViewModel::applyChanges()
     m_settings.setLocalNodePort(m_localNodePort);
     m_settings.setLocalNodePeers(m_localNodePeers);
     m_settings.setLockTimeout(m_lockTimeout);
-#ifdef BEAM_USE_GPU
     m_settings.setUseGpu(m_useGpu);
      
     m_settings.setMiningDevices(getSelectedDevice());
-#endif
     m_settings.applyChanges();
     emit propertiesChanged();
 }
@@ -297,11 +280,9 @@ QString SettingsViewModel::getWalletLocation() const
 
 void SettingsViewModel::setUseGpu(bool value)
 {
-#ifdef BEAM_USE_GPU
     m_useGpu = value;
     emit localNodeUseGpuChanged();
     emit propertiesChanged();
-#endif
 }
 
 bool SettingsViewModel::getUseGpu() const
@@ -316,9 +297,7 @@ void SettingsViewModel::undoChanges()
     setLocalNodePort(m_settings.getLocalNodePort());
     setLockTimeout(m_settings.getLockTimeout());
     setLocalNodePeers(m_settings.getLocalNodePeers());
-#ifdef BEAM_USE_GPU
     setUseGpu(m_settings.getUseGpu());
-#endif
 }
 
 

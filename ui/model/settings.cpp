@@ -33,10 +33,8 @@ namespace
     const char* LocalNodeRun = "localnode/run";
     const char* LocalNodePort = "localnode/port";
     const char* LocalNodePeers = "localnode/peers";
-#ifdef BEAM_USE_GPU
     const char* LocalNodeUseGpu = "localnode/use_gpu";
     const char* LocalNodeMiningDevices = "localnode/mining_devices";
-#endif
 }
 
 const char* WalletSettings::WalletCfg = "beam-wallet.cfg";
@@ -155,7 +153,6 @@ string WalletSettings::getTempDir() const
     return m_appDataDir.filePath("./temp").toStdString();
 }
 
-#ifdef BEAM_USE_GPU
 bool WalletSettings::getUseGpu() const
 {
     Lock lock(m_mutex);
@@ -210,8 +207,6 @@ void WalletSettings::setMiningDevices(const vector<int32_t>& value)
         emit localNodeMiningDevicesChanged();
     }
 }
-
-#endif
 
 static void zipLocalFile(QuaZip& zip, const QString& path, const QString& folder = QString())
 {

@@ -32,12 +32,13 @@
 #  pragma clang diagnostic pop
 #endif
 
+#include <boost/dll.hpp>
 #include <vector>
 #include <sstream>
 
 #include "utility/logger.h"
 #include "utility/string_helpers.h"
-#include "gpu_tools.h"
+#include "opencl_frontend.h"
 
 using namespace std;
 
@@ -56,25 +57,6 @@ namespace beam
             if (extens[i].compare(extension) == 0) 	return true;
         }
         return false;
-    }
-
-    bool HasSupportedCard()
-    {
-        static struct 
-        {
-            bool checked;
-            bool supported;
-        } status = {false, false};
-
-        if (status.checked)
-        {
-            return status.supported;
-        }
-
-        status.supported = !GetSupportedCards().empty();
-        status.checked = true;
-
-        return status.supported;
     }
 
     vector<GpuInfo> GetSupportedCards()
@@ -146,3 +128,5 @@ namespace beam
         return status.supportedCards;
     }
 }
+
+BOOST_DLL_ALIAS(beam::GetSupportedCards, GetSupportedCards)

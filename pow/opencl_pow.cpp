@@ -14,6 +14,7 @@
 
 #include "external_pow.h"
 #include "utility/helpers.h"
+#include <boost/dll.hpp>
 #include <mutex>
 #include <condition_variable>
 #include <atomic>
@@ -270,9 +271,11 @@ namespace beam {
         
     };
 
-    unique_ptr<IExternalPOW> IExternalPOW::create_opencl_solver(const vector<int32_t>& devices)
+    IExternalPOW* create_opencl_solver(const vector<int32_t>& devices)
     {
-        return make_unique<OpenCLMiner>(devices);
+        return new OpenCLMiner(devices);
     }
 
 } //namespace
+
+BOOST_DLL_ALIAS(beam::create_opencl_solver, create_opencl_solver)

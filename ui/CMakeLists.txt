@@ -88,13 +88,8 @@ endif()
 
 configure_file("${PROJECT_SOURCE_DIR}/version.h.in" "${CMAKE_CURRENT_BINARY_DIR}/version.h")
 
-add_dependencies(${TARGET_NAME} wallet mnemonic qrcode)
-target_link_libraries(${TARGET_NAME} qrcode)
-
-if(BEAM_USE_GPU)
-    add_dependencies(${TARGET_NAME} gpu_tools)
-    target_link_libraries(${TARGET_NAME} gpu_tools)
-endif()
+add_dependencies(${TARGET_NAME} wallet pow mnemonic qrcode)
+target_link_libraries(${TARGET_NAME} pow qrcode)
 
 if(LINUX)
 	set(CMAKE_POSITION_INDEPENDENT_CODE ON)

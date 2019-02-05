@@ -25,6 +25,7 @@
 #include <iomanip>
 
 #include "pow/external_pow.h"
+#include "pow/opencl_frontend.h"
 
 #include <boost/program_options.hpp>
 #include <boost/filesystem.hpp>
@@ -173,7 +174,9 @@ int main_impl(int argc, char* argv[])
 			auto port = vm[cli::PORT].as<uint16_t>();
 
 			{
-				reactor = io::Reactor::create();
+				std::unique_ptr<OpenCLFrontend> openCLFrontend;
+
+			    reactor = io::Reactor::create();
 				io::Reactor::Scope scope(*reactor);
 
 				io::Reactor::GracefulIntHandler gih(*reactor);
@@ -199,24 +202,27 @@ int main_impl(int argc, char* argv[])
 					node.m_Cfg.m_Listen.port(port);
 					node.m_Cfg.m_Listen.ip(INADDR_ANY);
 					node.m_Cfg.m_sPathLocal = vm[cli::STORAGE].as<string>();
-#if defined(BEAM_USE_GPU)
 
-                    if (!stratumServer)
+                    bool setupMiningThreads = false;
+					if (!stratumServer)
                     {
                         if (vm[cli::MINER_TYPE].as<string>() == "gpu")
                         {
-                            stratumServer = IExternalPOW::create_opencl_solver({-1});
-                            // now for GPU only 0 thread
-                            node.m_Cfg.m_MiningThreads = 0;
+                            openCLFrontend.reset(new OpenCLFrontend);
+                            if (openCLFrontend->loaded()) {
+                                stratumServer = openCLFrontend->create_opencl_solver({-1});
+                            }
                         }
                         else
                         {
-                            node.m_Cfg.m_MiningThreads = vm[cli::MINING_THREADS].as<uint32_t>();
+                            setupMiningThreads = true;
                         }
                     }
-#else
-					node.m_Cfg.m_MiningThreads = vm[cli::MINING_THREADS].as<uint32_t>();
-#endif
+
+					if (setupMiningThreads) {
+                        node.m_Cfg.m_MiningThreads = vm[cli::MINING_THREADS].as<uint32_t>();
+                    }
+
 					node.m_Cfg.m_VerificationThreads = vm[cli::VERIFICATION_THREADS].as<int>();
 
 					node.m_Cfg.m_LogUtxos = vm[cli::LOG_UTXOS].as<bool>();

@@ -114,12 +114,15 @@ std::vector<std::string> NodeModel::getLocalNodePeers()
     return result;
 }
 
-#ifdef BEAM_USE_GPU
 std::unique_ptr<IExternalPOW> NodeModel::getStratumServer()
 {
     auto& settings = AppModel::getInstance()->getSettings();
-    GetSupportedCards();
     auto devices = settings.getMiningDevices();
-    return settings.getUseGpu() && !devices.empty() ? IExternalPOW::create_opencl_solver(devices) : nullptr;
+    if (settings.getUseGpu() && !devices.empty()) {
+        m_openCLFrontend.reset(new OpenCLFrontend);
+        if (m_openCLFrontend->loaded()) {
+            return m_openCLFrontend->create_opencl_solver(devices);
+        }
+    }
+    return nullptr;
 }
-#endif //  BEAM_USE_GPU

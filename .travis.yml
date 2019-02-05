@@ -81,7 +81,7 @@ matrix:
         - OS_FOLDER=mac
         - GPU_FOLDER=/gpu
       script:
-        - cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DDEBUG_MESSAGES_IN_RELEASE_MODE=On -DBEAM_LINK_TYPE=Static -DBRANCH_NAME=$TRAVIS_BRANCH -DBEAM_USE_GPU=On . && make -j 4 && ctest --verbose && cpack;
+        - cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DDEBUG_MESSAGES_IN_RELEASE_MODE=On -DBEAM_LINK_TYPE=Static -DBRANCH_NAME=$TRAVIS_BRANCH . && make -j 4 && ctest --verbose && cpack;
         - export BEAM_WALLET_UI_OUT="Beam-Wallet-$BEAM_VERSION.dmg"
 
 ###############################################################################
@@ -184,7 +184,7 @@ matrix:
         - OS_FOLDER=linux
         - GPU_FOLDER=/gpu
       script:
-        - cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DDEBUG_MESSAGES_IN_RELEASE_MODE=On -DBEAM_LINK_TYPE=Static  -DBRANCH_NAME=$TRAVIS_BRANCH -DBEAM_USE_GPU=On . && make -j 4 && ctest --verbose && cpack;
+        - cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DDEBUG_MESSAGES_IN_RELEASE_MODE=On -DBEAM_LINK_TYPE=Static  -DBRANCH_NAME=$TRAVIS_BRANCH . && make -j 4 && ctest --verbose && cpack;
         - export BEAM_WALLET_UI_OUT="Beam-Wallet-$BEAM_VERSION.deb"
 
 ###############################################################################
