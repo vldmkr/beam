@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "pow/stratum.h"
+#include "pow/opencl_frontend.h"
 #include "core/ecc.h"
 #include "utility/io/json_serializer.h"
 #include "p2p/line_protocol.h"
@@ -106,6 +107,14 @@ void gen_examples() {
     reader.new_data_from_stream((void*)buf.data, buf.size);
 }
 
+void check_frontend() {
+    OpenCLFrontend f;
+    auto cards = f.GetSupportedCards();
+    for (const auto& c: cards) {
+        LOG_INFO() << c.index << ") " << c.name;
+    }
+}
+
 } //namespace
 
 int main() {
@@ -116,6 +125,7 @@ int main() {
     auto logger = Logger::create(logLevel, logLevel);
     auto res = json_creation_test();
     gen_examples();
+    check_frontend();
     return res;
 }
 
