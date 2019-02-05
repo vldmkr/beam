@@ -79,8 +79,6 @@ void TestWalletDataBase()
     Coin coin2 = CreateAvailCoin(2);
     walletDB->store(coin2);
 
-    WALLET_CHECK(coin2.m_ID.m_Idx == coin1.m_ID.m_Idx + 1);
-
     {
         auto coins = walletDB->selectCoins(7);
         WALLET_CHECK(coins.size() == 2);
@@ -676,13 +674,12 @@ void TestAddresses()
     WALLET_CHECK(addresses.empty());
 
     WalletAddress a = {};
-    a.m_walletID.m_Pk = unsigned(9876543);
-    a.m_walletID.m_Channel = 0U;
     a.m_label = "test label";
     a.m_category = "test category";
     a.m_createTime = beam::getTimestamp();
     a.m_duration = 23;
     a.m_OwnID = 44;
+    a.m_walletID = generateWalletIDFromIndex(*db, a.m_OwnID);
 
     db->saveAddress(a);
 
@@ -1224,7 +1221,7 @@ int main()
     auto logger = beam::Logger::create(logLevel, logLevel);
     ECC::InitializeContext();
 
-   /* TestWalletDataBase();
+    TestWalletDataBase();
     TestStoreCoins();
     TestStoreTxRecord();
     TestTxRollback();
@@ -1235,12 +1232,12 @@ int main()
     TestSelect3();
     TestSelect4();
     TestSelect5();
-    TestSelect6();*/
+    TestSelect6();
     TestAddresses();
 
     TestTxParameters();
 
-    /*TestTransferredByTx();*/
+    TestTransferredByTx();
 
 
     return WALLET_CHECK_RESULT;

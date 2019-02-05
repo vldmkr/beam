@@ -87,8 +87,8 @@ struct Node
 			std::string m_sPathOutput;
 			std::string m_sPathTmp;
 
-			uint32_t m_Naggling = 32;			// combine up to 32 blocks in memory, before involving file system
-			uint32_t m_MaxBacklog = 7;
+			uint32_t m_Naggling = 32;	// combine up to 32 blocks in memory, before involving file system
+			uint32_t m_MaxBacklog = 1;	// should be enough (unless it'll take more than 6 hours to sync with current settings)
 
 			uint32_t m_UploadPortion = 5 * 1024 * 1024; // set to 0 to disable upload
 
@@ -187,6 +187,7 @@ private:
 		void OnModified() override;
 		bool EnumViewerKeys(IKeyWalker&) override;
 		void OnUtxoEvent(const UtxoEvent::Key&, const UtxoEvent::Value&) override;
+		void OnDummy(const Key::ID&, Height) override;
 
 		struct Verifier
 		{
@@ -258,8 +259,6 @@ private:
 	TaskList m_lstTasksUnassigned;
 	TaskSet m_setTasks;
 
-	uint64_t m_LastDummyID = 0;
-
 	struct FirstTimeSync
 	{
 		// there are 2 phases:
@@ -296,6 +295,7 @@ private:
 	void InitKeys();
 	void InitIDs();
 	void InitMode();
+	void RefreshDecoys();
 
 	struct Wanted
 	{
@@ -356,6 +356,7 @@ private:
 	void PerformAggregation(Dandelion::Element&);
 	void AddDummyInputs(Transaction&);
 	void AddDummyOutputs(Transaction&);
+	Height SampleDummySpentHeight();
 	bool OnTransactionFluff(Transaction::Ptr&&, const Peer*, Dandelion::Element*);
 
 	bool ValidateTx(Transaction::Context&, const Transaction&); // complete validation

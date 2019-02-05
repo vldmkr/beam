@@ -92,12 +92,12 @@ namespace beam
         const char* WALLET_ADDR = "address";
         const char* CHANGE_ADDRESS_EXPIRATION = "change_address_expiration";
         const char* WALLET_ADDRESS_LIST = "address_list";
-        const char* WALLET_REFRESH = "refresh";
+        const char* WALLET_RESCAN = "rescan";
         const char* UTXO = "utxo";
         const char* EXPORT_ADDRESSES = "export_addresses";
         const char* IMPORT_ADDRESSES = "import_addresses";
-        const char* EXPORT_PATH = "export_path";
-        const char* IMPORT_PATH = "import_path";
+        const char* IMPORT_EXPORT_PATH = "file_location";
+        const char* NO_FAST_SYNC = "no_fast_sync";
         const char* MINER_TYPE = "miner_type";
         // treasury
         const char* TR_OPCODE = "tr_op";
@@ -162,6 +162,7 @@ namespace beam
             (cli::KEY_OWNER, po::value<string>(), "Owner viewer key")
             (cli::KEY_MINE, po::value<string>(), "Standalone miner key")
             (cli::PASS, po::value<string>(), "password for keys")
+            (cli::NO_FAST_SYNC, "ignode fast sync mechanism")
 			(cli::LOG_UTXOS, po::value<bool>()->default_value(false), "Log recovered UTXOs (make sure the log file is not exposed)")
             ;
 
@@ -190,9 +191,8 @@ namespace beam
 			(cli::PAYMENT_PROOF_DATA, po::value<string>(), "payment proof data to verify")
 			(cli::PAYMENT_PROOF_REQUIRED, po::value<bool>(), "Set to disallow outgoing payments if the receiver doesn't supports the payment proof (older wallets)")
             (cli::UTXO, po::value<vector<string>>()->multitoken(), "preselected utxos to transfer")
-            (cli::EXPORT_PATH, po::value<string>()->default_value("export.dat"), "path to export data (export_addresses)")
-            (cli::IMPORT_PATH, po::value<string>()->default_value("import.dat"), "path to import data (import_addresses)")
-            (cli::COMMAND, po::value<string>(), "command to execute [new_addr|send|receive|listen|init|restore|info|export_miner_key|export_owner_key|generate_phrase|change_address_expiration|address_list|refresh|export_addresses|import_addresses]");
+            (cli::IMPORT_EXPORT_PATH, po::value<string>()->default_value("addresses.dat"), "path to import or export data (import_addresses|export_addresses)")
+            (cli::COMMAND, po::value<string>(), "command to execute [new_addr|send|receive|listen|init|restore|info|export_miner_key|export_owner_key|generate_phrase|change_address_expiration|address_list|rescan|export_addresses|import_addresses]");
 
         po::options_description wallet_treasury_options("Wallet treasury options");
         wallet_treasury_options.add_options()

@@ -44,6 +44,7 @@ TxObject::TxObject(const TxDescription& tx) : _tx(tx)
 {
     auto kernelID = QString::fromStdString(to_hex(_tx.m_kernelID.m_pData, _tx.m_kernelID.nBytes));
     setKernelID(kernelID);
+    analyzeStatus();
 }
 
 bool TxObject::income() const
@@ -94,8 +95,36 @@ QString TxObject::change() const
 
 QString TxObject::status() const
 {
-    static QString Names[] = { tr("Pending"), tr("In Progress"), tr("Cancelled"), tr("Completed"), tr("Failed"), tr("Syncing with blockchain") };
-    return Names[static_cast<uint32_t>(_tx.m_status)];
+    switch (_tx.m_status)
+    {
+    case TxStatus::Pending:
+        return tr("pending");
+    case TxStatus::InProgress:
+        return income() ? tr("waiting for sender") : tr("waiting for receiver");
+    case TxStatus::Registering:
+        return income() ? tr("receiving") : tr("sending");
+    case TxStatus::Completed:
+    {
+        if (_tx.m_selfTx)
+        {
+            return tr("completed");
+        }
+        return income() ? tr("received") : tr("sent");
+    }
+    case TxStatus::Cancelled:
+        return tr("cancelled");
+    case TxStatus::Failed:
+        if (TxFailureReason::TransactionExpired == _tx.m_failureReason)
+        {
+            return tr("expired");
+        }
+        return tr("failed");
+    default:
+        break;
+    }
+
+    assert(false && "Unknown TX status!");
+    return tr("unknown");
 }
 
 bool TxObject::canCancel() const
@@ -205,7 +234,35 @@ void TxObject::update(const beam::TxDescription& tx)
     setStatus(tx.m_status);
     auto kernelID = QString::fromStdString(to_hex(tx.m_kernelID.m_pData, tx.m_kernelID.nBytes));
     setKernelID(kernelID);
-    if (tx.m_status == TxStatus::Failed)
+    analyzeStatus();
+}
+
+bool TxObject::inProgress() const
+{
+    switch (_tx.m_status)
+    {
+    case TxStatus::Pending:
+    case TxStatus::InProgress:
+    case TxStatus::Registering:
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool TxObject::isCompleted() const
+{
+    return _tx.m_status == TxStatus::Completed;
+}
+
+bool TxObject::isSelfTx() const
+{
+    return _tx.m_selfTx;
+}
+
+void TxObject::analyzeStatus()
+{
+    if (getTxDescription().m_status == TxStatus::Failed)
     {
         static QString Reasons[] =
         {
@@ -223,7 +280,7 @@ void TxObject::update(const beam::TxDescription& tx)
             tr("Payment not signed by the receiver, please send wallet logs to Beam support")
         };
 
-        setFailureReason(Reasons[tx.m_failureReason]);
+        setFailureReason(Reasons[getTxDescription().m_failureReason]);
     }
 }
 
@@ -268,7 +325,7 @@ void WalletViewModel::cancelTx(TxObject* pTxObject)
 {
     if (pTxObject->canCancel())
     {
-        _model.getAsync()->cancelTx(pTxObject->_tx.m_txId);
+        _model.getAsync()->cancelTx(pTxObject->getTxDescription().m_txId);
     }
 }
 
@@ -276,7 +333,7 @@ void WalletViewModel::deleteTx(TxObject* pTxObject)
 {
     if (pTxObject->canDelete())
     {
-        _model.getAsync()->deleteTx(pTxObject->_tx.m_txId);
+        _model.getAsync()->deleteTx(pTxObject->getTxDescription().m_txId);
     }
 }
 
@@ -315,7 +372,6 @@ void WalletViewModel::onStatus(const WalletStatus& status)
         changed = true;
 
         emit actualAvailableChanged();
-        emit availableToSendAmountChanged();
     }
 
     if (_status.receiving != status.receiving)
@@ -366,7 +422,7 @@ void WalletViewModel::onTxStatus(beam::ChangeAction action, const std::vector<Tx
     {
         for (const auto& item : items)
         {
-            auto it = find_if(_txList.begin(), _txList.end(), [&item](const auto& tx) {return item.m_txId == tx->_tx.m_txId; });
+            auto it = find_if(_txList.begin(), _txList.end(), [&item](const auto& tx) {return item.m_txId == tx->getTxDescription().m_txId; });
             if (it != _txList.end())
             {
                 _txList.erase(it);
@@ -379,7 +435,7 @@ void WalletViewModel::onTxStatus(beam::ChangeAction action, const std::vector<Tx
         auto txEnd = _txList.end();
         for (const auto& item : items)
         {
-            txIt = find_if(txIt, txEnd, [&item](const auto& tx) {return item.m_txId == tx->_tx.m_txId; });
+            txIt = find_if(txIt, txEnd, [&item](const auto& tx) {return item.m_txId == tx->getTxDescription().m_txId; });
             if (txIt == txEnd)
             {
                 break;
@@ -405,9 +461,12 @@ void WalletViewModel::onTxStatus(beam::ChangeAction action, const std::vector<Tx
 
 void WalletViewModel::onChangeCalculated(beam::Amount change)
 {
-    _change = change;
+    if (_change != change)
+    {
+        _change = change;
+        emit changeChanged();
+    }
     emit actualAvailableChanged();
-    emit changeChanged();
 }
 
 void WalletViewModel::onChangeCurrentWalletIDs(beam::WalletID senderID, beam::WalletID receiverID)
@@ -441,9 +500,14 @@ QString WalletViewModel::sendAmount() const
     return _sendAmount;
 }
 
-QString WalletViewModel::getAvailableToSendAmount() const
+QString WalletViewModel::getAmountMissingToSend() const
 {
-    return BeamToString(_status.available - calcFeeAmount());
+    Amount missed = calcTotalAmount() - _status.available;
+    if (missed > 99999)
+    {
+        return BeamToString(missed) + tr(" beams");
+    }
+    return QLocale().toString((uint32_t)missed) + tr(" groths");
 }
 
 QString WalletViewModel::feeGrothes() const
@@ -478,7 +542,6 @@ void WalletViewModel::setSendAmount(const QString& value)
         _sendAmount = trimmedValue;
         _model.getAsync()->calcChange(calcTotalAmount());
         emit sendAmountChanged();
-        emit actualAvailableChanged();
     }
 }
 
@@ -490,8 +553,6 @@ void WalletViewModel::setFeeGrothes(const QString& value)
         _feeGrothes = trimmedValue;
         _model.getAsync()->calcChange(calcTotalAmount());
         emit feeGrothesChanged();
-        emit actualAvailableChanged();
-        emit availableToSendAmountChanged();
     }
 }
 

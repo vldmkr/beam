@@ -73,22 +73,33 @@ namespace beam
 
     const char* getTxStatus(const TxDescription& tx)
     {
-        static const char* Pending = "Pending";
-        static const char* Sending = "Sending";
-        static const char* Receiving = "Receiving";
-        static const char* Cancelled = "Cancelled";
-        static const char* Sent = "Sent";
-        static const char* Received = "Received";
-        static const char* Failed = "Failed";
+        static const char* Pending = "pending";
+        static const char* WaitingForSender = "waiting for sender";
+        static const char* WaitingForReceiver = "waiting for receiver";
+        static const char* Sending = "sending";
+        static const char* Receiving = "receiving";
+        static const char* Cancelled = "cancelled";
+        static const char* Sent = "sent";
+        static const char* Received = "received";
+        static const char* Failed = "failed";
+        static const char* Completed = "completed";
+        static const char* Expired = "expired";
 
         switch (tx.m_status)
         {
         case TxStatus::Pending: return Pending;
-        case TxStatus::Registering:
-        case TxStatus::InProgress: return tx.m_sender ? Sending : Receiving;
+        case TxStatus::InProgress: return tx.m_sender ? WaitingForReceiver : WaitingForSender;
+        case TxStatus::Registering: return tx.m_sender ? Sending : Receiving;
         case TxStatus::Cancelled: return Cancelled;
-        case TxStatus::Completed: return tx.m_sender ? Sent : Received;
-        case TxStatus::Failed: return Failed;
+        case TxStatus::Completed:
+        {
+            if (tx.m_selfTx)
+            {
+                return Completed;
+            }
+            return tx.m_sender ? Sent : Received;
+        }
+        case TxStatus::Failed: return TxFailureReason::TransactionExpired == tx.m_failureReason ? Expired : Failed;
         default:
             assert(false && "Unknown status");
         }
@@ -540,7 +551,7 @@ namespace
                 return 0;
             }
 
-            array<uint8_t, 4> columnWidths{ { 20, 26, 10, 35 } };
+            array<uint8_t, 4> columnWidths{ { 20, 26, 21, 35 } };
 
             cout << "TRANSACTIONS\n\n"
                 << "  |" << setw(columnWidths[0]) << "datetime" << " |"
@@ -699,25 +710,47 @@ namespace
         {
             return f.write(data.data(), data.size()) == data.size();
         }
-        LOG_ERROR() << "Failed to save expoerted data";
+        LOG_ERROR() << "Failed to save exported data";
         return false;
     }
 
     int ExportAddresses(const po::variables_map& vm, const IWalletDB::Ptr& walletDB)
     {
         auto s = wallet::ExportAddressesToJson(*walletDB);
-        return SaveExportedData(ByteBuffer(s.begin(), s.end()), vm[cli::EXPORT_PATH].as<string>()) ? 0 : -1;
+        return SaveExportedData(ByteBuffer(s.begin(), s.end()), vm[cli::IMPORT_EXPORT_PATH].as<string>()) ? 0 : -1;
     }
 
     int ImportAddresses(const po::variables_map& vm, const IWalletDB::Ptr& walletDB)
     {
         ByteBuffer buffer;
-        if (!LoadDataToImport(vm[cli::IMPORT_PATH].as<string>(), buffer))
+        if (!LoadDataToImport(vm[cli::IMPORT_EXPORT_PATH].as<string>(), buffer))
         {
             return -1;
         }
         const char* p = (char*)(&buffer[0]);
         return wallet::ImportAddressesFromJson(*walletDB, p, buffer.size()) ? 0 : -1;
+    }
+
+    CoinIDList GetPreselectedCoinIDs(const po::variables_map& vm)
+    {
+        CoinIDList coinIDs;
+        if (vm.count(cli::UTXO))
+        {
+            auto tempCoins = vm[cli::UTXO].as<vector<string>>();
+            for (const auto& s : tempCoins)
+            {
+                auto csv = string_helpers::split(s, ',');
+                for (const auto& v : csv)
+                {
+                    auto coinID = Coin::FromString(v);
+                    if (coinID)
+                    {
+                        coinIDs.push_back(*coinID);
+                    }
+                }
+            }
+        }
+        return coinIDs;
     }
 }
 
@@ -812,7 +845,7 @@ int main_impl(int argc, char* argv[])
                         && command != cli::PAYMENT_PROOF_VERIFY
                         && command != cli::GENERATE_PHRASE
                         && command != cli::WALLET_ADDRESS_LIST
-                        && command != cli::WALLET_REFRESH
+                        && command != cli::WALLET_RESCAN
                         && command != cli::IMPORT_ADDRESSES
                         && command != cli::EXPORT_ADDRESSES)
                     {
@@ -1042,20 +1075,7 @@ int main_impl(int argc, char* argv[])
                     {
                         WalletAddress senderAddress = newAddress(walletDB, "");
                         wnet.AddOwnAddress(senderAddress);
-                        CoinIDList coinIDs;
-                        if (vm.count(cli::UTXO))
-                        {
-                            auto tempCoins = vm[cli::UTXO].as<vector<string>>();
-
-                            for (const auto& s : tempCoins)
-                            {
-                                auto coinID = Coin::FromString(s);
-                                if (coinID)
-                                {
-                                    coinIDs.push_back(*coinID);
-                                }
-                            }
-                        }
+                        CoinIDList coinIDs = GetPreselectedCoinIDs(vm);
                         wallet.transfer_money(senderAddress.m_walletID, receiverWalletID, move(amount), move(fee), coinIDs, command == cli::SEND);
                     }
 
@@ -1083,7 +1103,7 @@ int main_impl(int argc, char* argv[])
                         }
                     }
 
-                    if (command == cli::WALLET_REFRESH)
+                    if (command == cli::WALLET_RESCAN)
                     {
                         wallet.Refresh();
                     }

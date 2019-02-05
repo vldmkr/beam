@@ -91,12 +91,12 @@ namespace beam
         extern const char* WALLET_ADDR;
         extern const char* CHANGE_ADDRESS_EXPIRATION;
         extern const char* WALLET_ADDRESS_LIST;
-        extern const char* WALLET_REFRESH;
+        extern const char* WALLET_RESCAN;
         extern const char* UTXO;
         extern const char* EXPORT_ADDRESSES;
         extern const char* IMPORT_ADDRESSES;
-        extern const char* EXPORT_PATH;
-        extern const char* IMPORT_PATH;
+        extern const char* IMPORT_EXPORT_PATH;
+        extern const char* NO_FAST_SYNC;
         extern const char* MINER_TYPE;
  // treasury
         extern const char* TR_OPCODE;
