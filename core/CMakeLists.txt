@@ -18,7 +18,14 @@ set(CORE_SRC
 # ~etc
 )
 
-add_library(core STATIC ${CORE_SRC})
+set(THIRD_CRYPTO_SRC
+    ${PROJECT_SOURCE_DIR}/3rdparty/hmac_sha512.c
+    ${PROJECT_SOURCE_DIR}/3rdparty/pkcs5_pbkdf2.c
+    ${PROJECT_SOURCE_DIR}/3rdparty/sha512.c
+    ${PROJECT_SOURCE_DIR}/3rdparty/zeroize.c
+    )
+
+add_library(core STATIC ${CORE_SRC} ${THIRD_CRYPTO_SRC})
 
 add_dependencies(core p2p pow)
 target_link_libraries(core p2p pow)

@@ -13,8 +13,10 @@
 // limitations under the License.
 
 #include "opencl_frontend.h"
+#include "utility/logger.h"
 #include <boost/dll.hpp>
 #include <boost/function.hpp>
+#include <boost/exception/diagnostic_information.hpp>
 
 #if defined WIN32
 #define LIBRARY_NAME "opencl_pow.dll"
@@ -51,7 +53,13 @@ private:
 OpenCLFrontend::OpenCLFrontend() : _impl(nullptr) {
     try {
         _impl = new Impl();
-    } catch (...) {}
+    } catch (const std::exception& e) {
+        LOG_ERROR() << LIBRARY_NAME << " " << e.what();
+    } catch (const boost::exception& e) {
+        LOG_ERROR() << boost::diagnostic_information(e);
+    } catch (...) {
+        LOG_ERROR() << "unknown exception while loading " << LIBRARY_NAME;
+    }
 }
 
 OpenCLFrontend::~OpenCLFrontend() {

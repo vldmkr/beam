@@ -18,7 +18,6 @@
 #include <mutex>
 #include <condition_variable>
 #include <atomic>
-#include "utility/logger.h"
 #include <vector>
 #include "3rdparty/opencl-miner/clHost.h"
 #include "3rdparty/crypto/equihash.h"
@@ -123,7 +122,6 @@ namespace beam {
             stop();
             _thread.join();
             _minerThread.join();
-            LOG_INFO() << "OpenCLMiner is done";
         }
 
     private:
@@ -221,25 +219,12 @@ namespace beam {
         {
             bool cpuMine = false;
 
-            LOG_DEBUG() << "runOpenclMiner()";
-
-            
-            
-            LOG_INFO() << "Setup OpenCL devices:";
-            LOG_INFO() << "=====================";
-
             _ClHost.setup(&_workProvider, _devices, cpuMine);
-
-            LOG_INFO() << "Waiting for work:";
-            LOG_INFO() << "==============================";
 
             while (!_workProvider.hasWork())
             {
                 this_thread::sleep_for(chrono::milliseconds(200));
             }
-
-            LOG_INFO() << "Start mining:";
-            LOG_INFO() << "=============";
 
             _ClHost.startMining();
         }
@@ -275,6 +260,11 @@ namespace beam {
     {
         return new OpenCLMiner(devices);
     }
+
+    class Logger {
+        static Logger* g_logger;
+    };
+    Logger* Logger::g_logger = 0;
 
 } //namespace
 

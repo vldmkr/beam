@@ -65,8 +65,6 @@ if (UNIX)
     target_link_libraries(utility dl)
 endif()
 
-target_link_libraries(utility mnemonic)
-
 if(ANDROID)
     if(ANDROID_ABI STREQUAL "armeabi-v7a")
         target_link_libraries(utility 

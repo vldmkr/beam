@@ -36,11 +36,28 @@
 #include <vector>
 #include <sstream>
 
-#include "utility/logger.h"
-#include "utility/string_helpers.h"
 #include "opencl_frontend.h"
 
 using namespace std;
+
+namespace string_helpers
+{
+    template<typename Out>
+    void split(const std::string& s, char delim, Out result)
+    {
+        std::stringstream ss(s);
+        std::string item;
+        while (std::getline(ss, item, delim))
+            *(result++) = item;
+    }
+
+    std::vector<std::string> split(const std::string& s, char delim)
+    {
+        std::vector<std::string> elems;
+        split(s, delim, std::back_inserter(elems));
+        return elems;
+    }
+}
 
 // TODO: copy-paste from clHost.cpp, pls unify
 
@@ -103,7 +120,6 @@ namespace beam
                     name.pop_back();
                 }
 
-                LOG_INFO() << "Found device " << curDiv << ": " << name;
 
                 {
                     // Check if the CPU / GPU has enough memory
@@ -112,14 +128,13 @@ namespace beam
 
                     if (deviceMemory > needed)
                     {
-                        LOG_INFO() << "Memory check ok";
                         status.supportedCards.push_back({ name, curDiv });
                     }
-                    else
+                    /*else
                     {
                         LOG_INFO() << "Memory check failed";
                         LOG_INFO() << "Device reported " << deviceMemory / (1024 * 1024) << "MByte memory, " << needed / (1024 * 1024) << " are required ";
-                    }
+                    }*/
                 }
                 curDiv++;
             }

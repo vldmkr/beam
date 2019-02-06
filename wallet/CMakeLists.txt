@@ -17,8 +17,8 @@ set(WALLET_SRC
 )
 
 add_library(wallet STATIC ${WALLET_SRC})
-add_dependencies(wallet core p2p sqlite)
-target_link_libraries(wallet core p2p sqlite)
+add_dependencies(wallet core mnemonic p2p sqlite)
+target_link_libraries(wallet core mnemonic p2p sqlite)
 
 add_executable(${TARGET_NAME} cli.cpp)
 

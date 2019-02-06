@@ -19,8 +19,8 @@ add_library(pow STATIC ${POW_SRC})
 
 target_compile_definitions(pow PRIVATE ENABLE_MINING)
 
-add_dependencies(pow crypto)
-target_link_libraries(pow crypto)
+add_dependencies(pow crypto utility)
+target_link_libraries(pow crypto utility)
 
 target_include_directories(pow PRIVATE ${PROJECT_SOURCE_DIR}/3rdparty/crypto)
 
@@ -43,8 +43,8 @@ if(OpenCL_FOUND)
     target_include_directories(opencl_pow PRIVATE ${PROJECT_SOURCE_DIR}/3rdparty/opencl-miner)
     target_include_directories(opencl_pow PRIVATE ${PROJECT_SOURCE_DIR}/3rdparty/opencl-miner/clHeaders)
 
-    add_dependencies(opencl_pow utility)
-    target_link_libraries(opencl_pow OpenCL::OpenCL utility dl)
+    #add_dependencies(opencl_pow utility)
+    target_link_libraries(opencl_pow OpenCL::OpenCL dl)
     target_compile_definitions(opencl_pow PRIVATE ENABLE_MINING)
 else()
     message(STATUS "~~~~~~~~~~~~~~~~~~~~~~~~OpenCL not found~~~~~~~~~~~~~~~~~~~~~~~~~")
@@ -56,7 +56,7 @@ add_library(external_pow STATIC
     stratum_server.cpp
 )
 
-add_dependencies(external_pow core p2p pow core)
+add_dependencies(external_pow core p2p pow)
 target_link_libraries(external_pow p2p pow core)
 
 add_executable(miner_client miner_client.cpp ../core/block_crypt.cpp) # ???????????????????????????
