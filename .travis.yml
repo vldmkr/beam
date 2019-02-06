@@ -73,6 +73,7 @@ matrix:
       install:
         - export TZ=Etc/GMT-3
         - wget "https://cmake.org/files/v3.12/cmake-3.12.0-Linux-x86_64.sh"
+        - sudo apt-get purge cmake
         - sudo sh cmake-3.12.0-Linux-x86_64.sh --skip-license --prefix=/usr
         - sudo add-apt-repository ppa:beineri/opt-qt-5.10.1-trusty -y
         - sudo apt-get update
@@ -108,6 +109,7 @@ matrix:
             - libcups2-dev
       install:
         - export TZ=Etc/GMT-3
+        - sudo apt-get purge cmake        
         - wget "https://cmake.org/files/v3.12/cmake-3.12.0-Linux-x86_64.sh"
         - sudo sh cmake-3.12.0-Linux-x86_64.sh --skip-license --prefix=/usr
         - eval "CC=gcc-7 && CXX=g++-7"
