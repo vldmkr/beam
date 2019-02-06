@@ -20,9 +20,6 @@
 #include "pow/external_pow.h"
 
 #include <boost/filesystem.hpp>
-#ifdef  BEAM_USE_GPU
-#include "utility/gpu/gpu_tools.h"
-#endif //  BEAM_USE_GPU
 
 
 using namespace beam;
