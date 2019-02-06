@@ -10,25 +10,13 @@ environment:
   BUILD_SERVER:
     secure: l9RqB2YbSnNIKZqTwnd67BHAXvbjmpj9zcf+YQPi9zfzsVeSysaoLD7gy4gSMjWurk2JVHjRpviw4bBxUbu2sA==  
   BUILD_CONFIG: RelWithDebInfo
-  matrix:
-    - USE_GPU: On
-      GPU_FOLDER: /gpu/
-    - USE_GPU: Off
-      GPU_FOLDER: /
-
-for:
-  - 
-    matrix:
-      only:
-        - USE_GPU: On
-    install:
-      - cmd: appveyor DownloadFile https://developer.nvidia.com/compute/cuda/10.0/Prod/local_installers/cuda_10.0.130_411.31_win10 -FileName cuda.exe    
-      - cmd: cuda.exe -s nvcc_10.0 nvprune_10.0 cublas_dev_10.0 cufft_dev_10.0 curand_dev_10.0 cusolver_dev_10.0 cusparse_dev_10.0 nvgraph_dev_10.0 npp_dev_10.0 nvrtc_dev_10.0 nvml_dev_10.0
-      - cmd: set PATH=%ProgramFiles%\NVIDIA GPU Computing Toolkit\CUDA\v10.0\bin;%ProgramFiles%\NVIDIA GPU Computing Toolkit\CUDA\v10.0\libnvvp;%PATH%
-      - cmd: appveyor DownloadFile "http://registrationcenter-download.intel.com/akdlm/irc_nas/vcp/13794/opencl_runtime_18.1_x64_setup.msi"
-      - cmd: start /wait msiexec /i opencl_runtime_18.1_x64_setup.msi /qn  /l*v msiexec2.log
 
 before_build:
+  - cmd: appveyor DownloadFile https://developer.nvidia.com/compute/cuda/10.0/Prod/local_installers/cuda_10.0.130_411.31_win10 -FileName cuda.exe    
+  - cmd: cuda.exe -s nvcc_10.0 nvprune_10.0 cublas_dev_10.0 cufft_dev_10.0 curand_dev_10.0 cusolver_dev_10.0 cusparse_dev_10.0 nvgraph_dev_10.0 npp_dev_10.0 nvrtc_dev_10.0 nvml_dev_10.0
+  - cmd: set PATH=%ProgramFiles%\NVIDIA GPU Computing Toolkit\CUDA\v10.0\bin;%ProgramFiles%\NVIDIA GPU Computing Toolkit\CUDA\v10.0\libnvvp;%PATH%
+  - cmd: appveyor DownloadFile "http://registrationcenter-download.intel.com/akdlm/irc_nas/vcp/13794/opencl_runtime_18.1_x64_setup.msi"
+  - cmd: start /wait msiexec /i opencl_runtime_18.1_x64_setup.msi /qn  /l*v msiexec2.log
   - cmd: git clone --depth=1 https://github.com/BeamMW/libs.git c:/beam-libs
   - cmd: git clone --depth=1 https://github.com/nesbox/qt5-static-win.git c:/beam-libs/qt5-static-win
   - cmd: cmake -G "Visual Studio 15 2017 Win64" -DCMAKE_BUILD_TYPE=%BUILD_CONFIG% -DBEAM_LINK_TYPE=Static -DBRANCH_NAME=%APPVEYOR_REPO_BRANCH% -DBEAM_BUILD_JNI=On
@@ -93,7 +81,7 @@ on_success:
 
     set BEAM_VERSION=%BEAM_VERSION_PREFIX%.%BEAM_VERSION_REVISION%
       
-    set BUILDS_SERVER_PATH=%BUILD_SERVER%/files/%APPVEYOR_REPO_BRANCH%/%DATE%/Release/win%GPU_FOLDER%
+    set BUILDS_SERVER_PATH=%BUILD_SERVER%/files/%APPVEYOR_REPO_BRANCH%/%DATE%/Release/win/
               
     curl --retry 3 --ftp-create-dirs -T "c:/projects/beam/beam/%BUILD_CONFIG%/beam-node-%BEAM_VERSION%.zip" "%BUILDS_SERVER_PATH%beam-node-%BEAM_VERSION%.zip"
 
@@ -136,7 +124,7 @@ deploy:
   region: us-west-2
   unzip: false
   set_public: true
-  folder: "%APPVEYOR_REPO_BRANCH%/%DATE%/Release/win%GPU_FOLDER%"
+  folder: "%APPVEYOR_REPO_BRANCH%/%DATE%/Release/win/"
   artifact: BeamPdb, BeamPack, BeamWalletApi, BeamWalletCli, BeamNode, BeamWallet
 
 notifications:
