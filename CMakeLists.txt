@@ -82,6 +82,16 @@ project(beam VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_REVISION})
 
 message("BEAM_VERSION: ${PROJECT_VERSION}")
 
+if (WIN32)
+    set(OPENCL_POW_LIBRARY_NAME "opencl_pow.dll")
+elseif(APPLE)
+    set(OPENCL_POW_LIBRARY_NAME "opencl_pow.dylib")
+else()
+    set(OPENCL_POW_LIBRARY_NAME "libopencl_pow.so")
+endif()
+
+add_definitions(-DOPENCL_POW_LIBRARY_NAME=\"${OPENCL_POW_LIBRARY_NAME}\")
+
 if(UNIX AND NOT APPLE AND NOT ANDROID)
     set(LINUX TRUE)
 endif()
@@ -142,9 +152,9 @@ endif()
 
 if(MSVC)
     if(CMAKE_CXX_FLAGS MATCHES "/W[0-4]")
-		string(REGEX REPLACE "/W[0-4]" "/W4 /WX" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+        string(REGEX REPLACE "/W[0-4]" "/W4 /WX" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
     else()
-		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4 /WX")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4 /WX")
     endif()
 
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4100") # unreferenced formal parameter
@@ -188,7 +198,7 @@ else()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-overloaded-virtual") # appears alot in our macro expansions
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-const-variable") # so what?
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-function") # mostly in 3rd-party libs
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-value") # proto.h
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-value") # proto.h
 
 
 endif()
@@ -231,7 +241,7 @@ else()
 endif()
 
 if(LINUX)
-	add_definitions(-DBOOST_NO_CXX11_SCOPED_ENUMS)
+    add_definitions(-DBOOST_NO_CXX11_SCOPED_ENUMS)
 endif()
 
 if (WIN32)

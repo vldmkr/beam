@@ -18,21 +18,13 @@
 #include <boost/function.hpp>
 #include <boost/exception/diagnostic_information.hpp>
 
-#if defined WIN32
-#define LIBRARY_NAME "opencl_pow.dll"
-#elif defined __linux__
-#define LIBRARY_NAME "libopencl_pow.so"
-#else
-#define LIBRARY_NAME "opencl_pow.dylib"
-#endif
-
 namespace beam {
 
 class OpenCLFrontend::Impl {
 public:
     Impl() {
-        fn_GetSupportedCards = boost::dll::import_alias<std::vector<GpuInfo>()>(LIBRARY_NAME, "GetSupportedCards");
-        fn_create_opencl_solver = boost::dll::import_alias<IExternalPOW*(const std::vector<int32_t>&)>(LIBRARY_NAME, "create_opencl_solver");
+        fn_GetSupportedCards = boost::dll::import_alias<std::vector<GpuInfo>()>(OPENCL_POW_LIBRARY_NAME, "GetSupportedCards");
+        fn_create_opencl_solver = boost::dll::import_alias<IExternalPOW*(const std::vector<int32_t>&)>(OPENCL_POW_LIBRARY_NAME, "create_opencl_solver");
     }
 
     ~Impl() = default;
@@ -54,11 +46,11 @@ OpenCLFrontend::OpenCLFrontend() : _impl(nullptr) {
     try {
         _impl = new Impl();
     } catch (const std::exception& e) {
-        LOG_ERROR() << LIBRARY_NAME << " " << e.what();
+        LOG_ERROR() << OPENCL_POW_LIBRARY_NAME << " " << e.what();
     } catch (const boost::exception& e) {
         LOG_ERROR() << boost::diagnostic_information(e);
     } catch (...) {
-        LOG_ERROR() << "unknown exception while loading " << LIBRARY_NAME;
+        LOG_ERROR() << "unknown exception while loading " << OPENCL_POW_LIBRARY_NAME;
     }
 }
 
