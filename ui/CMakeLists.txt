@@ -258,7 +258,7 @@ else()
     if(WIN32)
         install(FILES ${CMAKE_PREFIX_PATH}\\\\bin\\\\opengl32sw.dll DESTINATION .)
         install(FILES beam-wallet.cfg DESTINATION .)
-        install(FILES ${CMAKE_CURRENT_BINARY_DIR}/../pow/OPENCL_POW_LIBRARY_NAME DESTINATION .)
+        install(FILES ${CMAKE_BINARY_DIR}/pow/${CMAKE_BUILD_TYPE}/${OPENCL_POW_LIBRARY_NAME} DESTINATION .)
     endif()
 
     install(TARGETS ${TARGET_NAME} DESTINATION .)
