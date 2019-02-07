@@ -36,27 +36,20 @@ if(OpenCL_FOUND)
 
     set(OPENCL_POW_SRC
         opencl_pow.cpp
-        supported_cards.cpp
-        ${PROJECT_SOURCE_DIR}/3rdparty/opencl-miner/clHost.cpp)
+        supported_cards.cpp)
 
     add_library(opencl_pow SHARED ${OPENCL_POW_SRC})
     target_include_directories(opencl_pow PRIVATE ${PROJECT_SOURCE_DIR}/3rdparty/opencl-miner)
     target_include_directories(opencl_pow PRIVATE ${PROJECT_SOURCE_DIR}/3rdparty/opencl-miner/clHeaders)
 
-    add_dependencies(opencl_pow utility core pow)
-    target_link_libraries(opencl_pow OpenCL::OpenCL core pow)
+    #add_dependencies(opencl_pow utility core pow)
+    #target_link_libraries(opencl_pow OpenCL::OpenCL core pow)
+    target_link_libraries(opencl_pow OpenCL::OpenCL)
     if(UNIX)
         target_link_libraries(opencl_pow dl)
     endif()
 
     target_compile_definitions(opencl_pow PRIVATE ENABLE_MINING)
-
-    if (Boost_FOUND)
-        find_package(Boost COMPONENTS filesystem)
-        target_link_libraries(opencl_pow Boost::filesystem)
-    else()
-        target_link_libraries(opencl_pow boost_filesystem boost_system)
-    endif()
 
 else()
     message(STATUS "~~~~~~~~~~~~~~~~~~~~~~~~OpenCL not found~~~~~~~~~~~~~~~~~~~~~~~~~")
