@@ -107,7 +107,7 @@ std::vector<std::string> NodeModel::getLocalNodePeers()
         "us-node01.testnet.beam.mw:8100",
         "us-node02.testnet.beam.mw:8100",
         "us-node03.testnet.beam.mw:8100"
- #else
+#else
         "eu-node01.masternet.beam.mw:8100",
         "eu-node02.masternet.beam.mw:8100",
         "eu-node03.masternet.beam.mw:8100",
