@@ -80,7 +80,11 @@ void NodeModel::onFailedToStartNode(io::ErrorCode errorCode)
 uint16_t NodeModel::getLocalNodePort()
 {
     // default value
+#ifdef BEAM_TESTNET
+    return 11005;
+#else
     return 10005;
+#endif // BEAM_TESTNET
 }
 
 std::string NodeModel::getLocalNodeStorage()

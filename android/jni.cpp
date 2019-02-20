@@ -133,7 +133,11 @@ JNIEXPORT jobject JNICALL BEAM_JAVA_API_INTERFACE(createWallet)(JNIEnv *env, job
         nodeModel->start();
         nodeModel->setKdf(walletDB->get_MasterKdf());
         nodeModel->startNode();
+#ifdef BEAM_TESTNET
+        walletModel = make_unique<WalletModel>(walletDB, "127.0.0.1:11005");
+#else
         walletModel = make_unique<WalletModel>(walletDB, "127.0.0.1:10005");
+#endif // BEAM_TESTNET
 
         //walletModel = make_unique<WalletModel>(walletDB, JString(env, nodeAddrStr).value());
 
@@ -182,7 +186,11 @@ JNIEXPORT jobject JNICALL BEAM_JAVA_API_INTERFACE(openWallet)(JNIEnv *env, jobje
         nodeModel->setKdf(walletDB->get_MasterKdf());
         nodeModel->startNode();
 
+#ifdef BEAM_TESTNET
+        walletModel = make_unique<WalletModel>(walletDB, "127.0.0.1:11005");
+#else
         walletModel = make_unique<WalletModel>(walletDB, "127.0.0.1:10005");
+#endif // BEAM_TESTNET
 
         //walletModel = make_unique<WalletModel>(walletDB, JString(env, nodeAddrStr).value());
                 
