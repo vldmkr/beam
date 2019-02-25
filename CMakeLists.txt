@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.1)
 
 set(VERSION_MAJOR 1)
 set(VERSION_MINOR 2)
-set(VERSION_REVISION 0)
-set(GIT_COMMIT_HASH "unknown")
+set(VERSION_REVISION 4419)
+set(GIT_COMMIT_HASH "1f47688a901b8dc01e4240d1c562d3abfef4ffb6")
 
 if (BEAM_SIGN_PACKAGE AND WIN32)
   #  add_custom_target(signing ALL DEPENDS beam-wallet-ui COMMENT "Signing Package...")
@@ -46,18 +46,18 @@ if(Git_FOUND)
     string(LENGTH "${RESULT_STRING}" LENGTH_RESULT_STRING)
 
     if(${LENGTH_RESULT_STRING} EQUAL 0)
-        execute_process(
-            COMMAND ${GIT_EXECUTABLE} log -1 --format=%H
-            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            OUTPUT_VARIABLE GIT_COMMIT_HASH
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-        )
-        execute_process(
-            COMMAND ${GIT_EXECUTABLE} rev-list HEAD --count
-            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            OUTPUT_VARIABLE VERSION_REVISION
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-        )
+#        execute_process(
+#            COMMAND ${GIT_EXECUTABLE} log -1 --format=%H
+#            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+#            OUTPUT_VARIABLE GIT_COMMIT_HASH
+#            OUTPUT_STRIP_TRAILING_WHITESPACE
+#        )
+#        execute_process(
+#            COMMAND ${GIT_EXECUTABLE} rev-list HEAD --count
+#            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+#            OUTPUT_VARIABLE VERSION_REVISION
+#            OUTPUT_STRIP_TRAILING_WHITESPACE
+#        )
 
         set(APPVEYOR_REPO_BRANCH_EXISTS $ENV{APPVEYOR_REPO_BRANCH})
         set(TRAVIS_BRANCH_EXISTS $ENV{TRAVIS_BRANCH})
