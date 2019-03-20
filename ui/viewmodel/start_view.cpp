@@ -45,34 +45,6 @@ using namespace std;
 
 namespace
 {
-    const char* Peers[] =
-    {
-#ifdef BEAM_TESTNET
-        "ap-node01.testnet.beam.mw:8100",
-        "ap-node02.testnet.beam.mw:8100",
-        "ap-node03.testnet.beam.mw:8100",
-        "eu-node01.testnet.beam.mw:8100",
-        "eu-node02.testnet.beam.mw:8100",
-        "eu-node03.testnet.beam.mw:8100",
-        "us-node01.testnet.beam.mw:8100",
-        "us-node02.testnet.beam.mw:8100",
-        "us-node03.testnet.beam.mw:8100"
- #else
-    "eu-node01.mainnet.beam.mw:8100",
-    "eu-node02.mainnet.beam.mw:8100",
-    "eu-node03.mainnet.beam.mw:8100",
-    "eu-node04.mainnet.beam.mw:8100",
-    "us-node01.mainnet.beam.mw:8100",
-    "us-node02.mainnet.beam.mw:8100",
-    "us-node03.mainnet.beam.mw:8100",
-    "us-node04.mainnet.beam.mw:8100",
-    "ap-node01.mainnet.beam.mw:8100",
-    "ap-node02.mainnet.beam.mw:8100",
-    "ap-node03.mainnet.beam.mw:8100",
-    "ap-node04.mainnet.beam.mw:8100"
-#endif
-    };
-
     const QChar PHRASES_SEPARATOR = ';';
 
     boost::filesystem::path pathFromStdString(const std::string& path)
