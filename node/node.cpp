@@ -608,8 +608,6 @@ void Node::Processor::OnNewState()
         peer.Send(msg);
     }
 
-    get_ParentObj().m_Compressor.OnNewState();
-
     get_ParentObj().RefreshCongestions();
 
 	IObserver* pObserver = get_ParentObj().m_Cfg.m_Observer;
@@ -620,7 +618,6 @@ void Node::Processor::OnNewState()
 void Node::Processor::OnRolledBack()
 {
     LOG_INFO() << "Rolled back to: " << m_Cursor.m_ID;
-    get_ParentObj().m_Compressor.OnRolledBack();
 
 	IObserver* pObserver = get_ParentObj().m_Cfg.m_Observer;
 	if (pObserver)
@@ -784,29 +781,6 @@ void Node::Processor::TaskProcessor::Thread(uint32_t)
 	}
 }
 
-void Node::Processor::AdjustFossilEnd(Height& h)
-{
-    // blocks above the oldest macroblock should be accessible
-    Height hOldest = 0;
-
-    if (get_ParentObj().m_Compressor.m_bEnabled)
-    {
-        NodeDB::WalkerState ws(get_DB());
-        for (get_DB().EnumMacroblocks(ws); ws.MoveNext(); )
-            hOldest = ws.m_Sid.m_Height;
-    }
-
-    if (h > hOldest)
-        h = hOldest;
-}
-
-bool Node::Processor::OpenMacroblock(Block::BodyBase::RW& rw, const NodeDB::StateID& sid)
-{
-    get_ParentObj().m_Compressor.FmtPath(rw, sid.m_Height, NULL);
-    rw.ROpen();
-    return true;
-}
-
 void Node::Processor::OnModified()
 {
     if (!m_bFlushPending)
@@ -818,6 +792,27 @@ void Node::Processor::OnModified()
 
         m_bFlushPending = true;
     }
+}
+
+void Node::Processor::TryGoUpAsync()
+{
+	if (!m_bGoUpPending)
+	{
+		if (!m_pGoUpTimer)
+			m_pGoUpTimer = io::Timer::create(io::Reactor::get_Current());
+
+		m_pGoUpTimer->start(0, false, [this]() { OnGoUpTimer(); });
+
+		m_bGoUpPending = true;
+	}
+}
+
+void Node::Processor::OnGoUpTimer()
+{
+	m_bGoUpPending = false;
+	TryGoUp();
+	get_ParentObj().RefreshCongestions();
+	get_ParentObj().UpdateSyncStatus();
 }
 
 bool Node::Processor::EnumViewerKeys(IKeyWalker& w)
@@ -953,7 +948,6 @@ void Node::Initialize(IExternalPOW* externalPOW)
 
     m_PeerMan.Initialize();
     m_Miner.Initialize(externalPOW);
-    m_Compressor.Init();
     m_Bbs.Cleanup();
 	m_Bbs.m_HighestPosted_s = m_Processor.get_DB().get_BbsMaxTime();
 
@@ -1060,19 +1054,6 @@ void Node::Bbs::MaybeCleanup()
         Cleanup();
 }
 
-void Node::ImportMacroblock(Height h)
-{
-    Block::BodyBase::RW rw;
-    m_Compressor.FmtPath(rw, h, NULL);
-    rw.ROpen();
-
-    if (!m_Processor.ImportMacroBlock(rw))
-        throw std::runtime_error("import failed");
-
-    if (m_Processor.m_Cursor.m_Sid.m_Row)
-        m_Processor.get_DB().MacroblockIns(m_Processor.m_Cursor.m_Sid.m_Row);
-}
-
 Node::~Node()
 {
     LOG_INFO() << "Node stopping...";
@@ -1091,8 +1072,6 @@ Node::~Node()
             pt.m_Thread.join();
     }
     m_Miner.m_vThreads.clear();
-
-    m_Compressor.StopCurrent();
 
     for (PeerList::iterator it = m_lstPeers.begin(); m_lstPeers.end() != it; it++)
         it->m_LoginFlags = 0; // prevent re-assigning of tasks in the next loop
@@ -1764,7 +1743,7 @@ void Node::Peer::OnMsg(proto::GetBodyPack&& msg)
 					size_t nSize = 0;
 
 					sid.m_Height -= msg.m_CountExtra;
-					Height hMax = std::min(msg.m_Top.m_Height, sid.m_Height + 2000);
+					Height hMax = std::min(msg.m_Top.m_Height, sid.m_Height + m_This.m_Cfg.m_BandwidthCtl.m_MaxBodyPackCount);
 
 					for (; sid.m_Height <= hMax; sid.m_Height++)
 					{
@@ -1780,7 +1759,7 @@ void Node::Peer::OnMsg(proto::GetBodyPack&& msg)
 						nSize += bb.m_Eternal.size() + bb.m_Perishable.size();
 						msgBody.m_Bodies.push_back(std::move(bb));
 
-						if (nSize >= m_This.m_Cfg.m_BandwidthCtl.m_Chocking)
+						if (nSize >= m_This.m_Cfg.m_BandwidthCtl.m_MaxBodyPackSize)
 							break;
 					}
 
@@ -1841,9 +1820,8 @@ void Node::Peer::OnMsg(proto::Body&& msg)
 		p.OnBlock(id, msg.m_Body.m_Perishable, msg.m_Body.m_Eternal, m_pInfo->m_ID.m_Key) :
 		p.OnTreasury(msg.m_Body.m_Eternal);
 
-	p.TryGoUp();
+	p.TryGoUpAsync();
 	OnFirstTaskDone(eStatus);
-	m_This.UpdateSyncStatus();
 }
 
 void Node::Peer::OnMsg(proto::BodyPack&& msg)
@@ -1893,9 +1871,8 @@ void Node::Peer::OnMsg(proto::BodyPack&& msg)
 		}
 	}
 
-	p.TryGoUp();
+	p.TryGoUpAsync();
 	OnFirstTaskDone(eStatus);
-	m_This.UpdateSyncStatus();
 }
 
 void Node::Peer::OnFirstTaskDone(NodeProcessor::DataStatus::Enum eStatus)
@@ -3029,56 +3006,7 @@ void Node::Peer::OnMsg(proto::MacroblockGet&& msg)
     if (msg.m_Data >= Block::BodyBase::RW::Type::count)
         ThrowUnexpected();
 
-    proto::Macroblock msgOut;
-
-    if (m_This.m_Cfg.m_HistoryCompression.m_UploadPortion)
-    {
-        Processor& p = m_This.m_Processor;
-        NodeDB::WalkerState ws(p.get_DB());
-        for (p.get_DB().EnumMacroblocks(ws); ws.MoveNext(); )
-        {
-            Block::SystemState::ID id;
-            p.get_DB().get_StateID(ws.m_Sid, id);
-
-            if (msg.m_ID.m_Height)
-            {
-                if (msg.m_ID.m_Height < ws.m_Sid.m_Height)
-                    continue;
-
-                if (id != msg.m_ID)
-                    break;
-
-                // don't care if exc
-                Block::Body::RW rw;
-                m_This.m_Compressor.FmtPath(rw, ws.m_Sid.m_Height, NULL);
-
-                std::string sPath;
-                rw.GetPath(sPath, msg.m_Data);
-
-                std::FStream fs;
-                if (fs.Open(sPath.c_str(), true) && (fs.get_Remaining() > msg.m_Offset))
-                {
-                    uint64_t nDelta = fs.get_Remaining() - msg.m_Offset;
-
-                    uint32_t nPortion = m_This.m_Cfg.m_HistoryCompression.m_UploadPortion;
-                    if (nPortion > nDelta)
-                        nPortion = (uint32_t)nDelta;
-
-                    fs.Seek(msg.m_Offset);
-
-                    msgOut.m_Portion.resize(nPortion);
-                    fs.read(&msgOut.m_Portion.at(0), nPortion);
-                }
-            }
-			else
-				msgOut.m_SizeTotal = m_This.m_Compressor.get_SizeTotal(id.m_Height);
-
-            msgOut.m_ID = id;
-            break;
-        }
-    }
-
-    Send(msgOut);
+    Send(proto::Macroblock()); // deprecated
 }
 
 void Node::Peer::OnMsg(proto::GetUtxoEvents&& msg)
@@ -3240,7 +3168,7 @@ void Node::Miner::Initialize(IExternalPOW* externalPOW)
 
 	m_External.m_pSolver = externalPOW;
 
-    SetTimer(0, true); // async start mining, since this method may be followed by ImportMacroblock.
+    SetTimer(0, true); // async start mining
 }
 
 void Node::Miner::OnFinalizerChanged(Peer* p)
@@ -3613,8 +3541,7 @@ void Node::Miner::OnMined()
     assert(NodeProcessor::DataStatus::Accepted == eStatus);
 
     p.FlushDB();
-	p.TryGoUp(); // will likely trigger OnNewState(), and spread this block to the network
-	get_ParentObj().UpdateSyncStatus();
+	p.TryGoUpAsync(); // will likely trigger OnNewState(), and spread this block to the network
 }
 
 struct Node::Beacon::OutCtx
