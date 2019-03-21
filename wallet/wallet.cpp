@@ -84,6 +84,7 @@ namespace beam
         , m_OwnedNodesOnline(0)
     {
         assert(walletDB);
+        RegisterTransactionType(TxType::Simple, wallet::SimpleTransaction::Create);
         ResumeAllTransactions();
     }
 
@@ -141,6 +142,11 @@ namespace beam
 
     TxID Wallet::transfer_money(const WalletID& from, const WalletID& to, const AmountList& amountList, Amount fee, const CoinIDList& coins, bool sender, Height lifetime, Height responseTime, ByteBuffer&& message)
     {
+        return transfer_money2(from, to, amountList, fee, coins, sender, wallet::TxType::Simple, lifetime, responseTime, move(message));
+    }
+
+    TxID Wallet::transfer_money2(const WalletID& from, const WalletID& to, const AmountList& amountList, Amount fee, const CoinIDList& coins, bool sender, TxType type, Height lifetime, Height responseTime, ByteBuffer&& message)
+    {
         auto receiverAddr = m_WalletDB->getAddress(to);
 
         if (receiverAddr)
@@ -153,10 +159,10 @@ namespace beam
         }
 
         TxID txID = wallet::GenerateTxID();
-        auto tx = constructTransaction(txID, TxType::Simple);
+        auto tx = constructTransaction(txID, type);
         Height currentHeight = m_WalletDB->getCurrentHeight();
 
-        tx->SetParameter(TxParameterID::TransactionType, TxType::Simple, false);
+        tx->SetParameter(TxParameterID::TransactionType, type, false);
         tx->SetParameter(TxParameterID::Lifetime, lifetime, false);
         tx->SetParameter(TxParameterID::PeerResponseHeight, currentHeight + responseTime); 
         tx->SetParameter(TxParameterID::IsInitiator, true, false);
@@ -178,10 +184,7 @@ namespace beam
         txDescription.m_selfTx = (receiverAddr && receiverAddr->m_OwnID);
         m_WalletDB->saveTx(txDescription);
 
-        m_Transactions.emplace(txID, tx);
-
-        updateTransaction(txID);
-
+        ProcessTransaction(tx);
         return txID;
     }
 
@@ -209,10 +212,7 @@ namespace beam
         tx->SetParameter(TxParameterID::AtomicSwapCoin, swapCoin, false);
         tx->SetParameter(TxParameterID::AtomicSwapAmount, swapAmount, false);
 
-        m_Transactions.emplace(txID, tx);
-
-        updateTransaction(txID);
-
+        ProcessTransaction(tx);
         return txID;
     }
 
@@ -226,6 +226,18 @@ namespace beam
         SetUtxoEventsHeight(0);
         RequestUtxoEvents();
         RefreshTransactions();
+    }
+
+    void Wallet::ProcessTransaction(wallet::BaseTransaction::Ptr tx)
+    {
+        auto txID = tx->GetTxID();
+        m_Transactions.emplace(txID, tx);
+        updateTransaction(txID);
+    }
+
+    void Wallet::RegisterTransactionType(TxType type, BaseTransaction::Creator creator)
+    {
+        m_TxCreators[type] = creator;
     }
 
     void Wallet::RefreshTransactions()
@@ -849,15 +861,16 @@ namespace beam
         return t;
     }
 
+
     wallet::BaseTransaction::Ptr Wallet::constructTransaction(const TxID& id, TxType type)
     {
-        switch (type)
+        auto it = m_TxCreators.find(type);
+        if (it == m_TxCreators.end())
         {
-        case TxType::Simple:
-             return make_shared<SimpleTransaction>(*this, m_WalletDB, id);
-        case TxType::AtomicSwap:
-            return make_shared<AtomicSwapTransaction>(*this, m_WalletDB, id);
+            LOG_ERROR() << id << " Unsupported type of transaction: " << static_cast<int>(type);
+            return wallet::BaseTransaction::Ptr();
         }
-        return wallet::BaseTransaction::Ptr();
+
+        return it->second(*this, m_WalletDB, id);
     }
 }

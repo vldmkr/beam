@@ -292,7 +292,8 @@ namespace beam
         enum class TxType : uint8_t
         {
             Simple,
-            AtomicSwap
+            AtomicSwap,
+            OneSide
         };
 
         enum class AtomicSwapCoin

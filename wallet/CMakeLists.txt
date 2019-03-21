@@ -12,6 +12,7 @@ set(WALLET_SRC
     wallet_db.cpp
     wallet_client.h
     wallet_client.cpp
+    oneside_transaction.cpp
     swap_transaction.cpp
     secstring2.cpp
     unittests/util.cpp

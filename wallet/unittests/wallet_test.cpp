@@ -25,6 +25,7 @@
 #include "../../core/unittest/mini_blockchain.h"
 #include <string_view>
 #include "wallet/wallet_transaction.h"
+#include "wallet/oneside_transaction.h"
 
 #include "test_helpers.h"
 
@@ -1644,7 +1645,7 @@ namespace
         TestWalletRig receiver("receiver", createReceiverWalletDB());
 
         TxID txID = wallet::GenerateTxID();
-        auto tx = make_shared<wallet::SimpleTransaction>(gateway, sender.m_WalletDB, txID);
+        auto tx = wallet::SimpleTransaction::Create(gateway, sender.m_WalletDB, txID);
         Height currentHeight = sender.m_WalletDB->getCurrentHeight();
 
         tx->SetParameter(wallet::TxParameterID::TransactionType, wallet::TxType::Simple, false);
@@ -1813,6 +1814,34 @@ namespace
             cout << "Transferring of " << t.GetTxCount() << " by " << t.GetTxPerCall() << " transactions per call took: " << t.GetTotalTime() << " ms Max api latency: " << t.GetMaxLatency() << endl;
         }
     }
+
+    void TestOneSideTransaction()
+    {
+        cout << "\nTesting one side tx performance...\n";
+
+        io::Reactor::Ptr mainReactor{ io::Reactor::create() };
+        io::Reactor::Scope scope(*mainReactor);
+
+        int completedCount = 2;
+        auto f = [&completedCount, mainReactor](auto)
+        {
+            --completedCount;
+            if (completedCount == 0)
+            {
+                mainReactor->stop();
+                completedCount = 2;
+            }
+        };
+
+        TestNode node;
+        TestWalletRig sender("sender", createSenderWalletDB(), f);
+        TestWalletRig receiver("receiver", createReceiverWalletDB(), f);
+
+        sender.m_Wallet.RegisterTransactionType(wallet::TxType::OneSide, wallet::OneSideTransaction::Create);
+        receiver.m_Wallet.RegisterTransactionType(wallet::TxType::OneSide, wallet::OneSideTransaction::Create);
+
+        auto txId = sender.m_Wallet.transfer_money2(sender.m_WalletID, receiver.m_WalletID, AmountList{ 4 }, 2, {}, true, wallet::TxType::OneSide);
+    }
 }
 
 int main()
@@ -1841,7 +1870,7 @@ int main()
 
     TestTxToHimself();
 
-    //TestExpiredTransaction();
+    TestExpiredTransaction();
 
     TestTransactionUpdate();
     //TestTxPerformance();

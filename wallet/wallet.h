@@ -75,6 +75,7 @@ namespace beam
         TxID transfer_money(const WalletID& from, const WalletID& to, Amount amount, Amount fee = 0, bool sender = true, Height lifetime = 120, Height responseTime = 12*60, ByteBuffer&& message = {} );
         TxID transfer_money(const WalletID& from, const WalletID& to, Amount amount, Amount fee = 0, const CoinIDList& coins = {}, bool sender = true, Height lifetime = 120, Height responseTime = 12 * 60, ByteBuffer&& message = {});
         TxID transfer_money(const WalletID& from, const WalletID& to, const AmountList& amountList, Amount fee = 0, const CoinIDList& coins = {}, bool sender = true, Height lifetime = 120, Height responseTime = 12 * 60, ByteBuffer&& message = {});
+        TxID transfer_money2(const WalletID& from, const WalletID& to, const AmountList& amountList, Amount fee = 0, const CoinIDList& coins = {}, bool sender = true, wallet::TxType type = wallet::TxType::Simple, Height lifetime = 120, Height responseTime = 12 * 60, ByteBuffer&& message = {});
         TxID split_coins(const WalletID& from, const AmountList& amountList, Amount fee = 0, bool sender = true, Height lifetime = 120, Height responseTime = 12 * 60, ByteBuffer&& message = {});
         TxID swap_coins(const WalletID& from, const WalletID& to, Amount amount, Amount fee, wallet::AtomicSwapCoin swapCoin, Amount swapAmount);
         void Refresh();
@@ -84,6 +85,9 @@ namespace beam
         void unsubscribe(IWalletObserver* observer) override;
         void cancel_tx(const TxID& txId) override;
         void delete_tx(const TxID& txId) override;
+
+        void ProcessTransaction(wallet::BaseTransaction::Ptr tx);
+        void RegisterTransactionType(wallet::TxType type, wallet::BaseTransaction::Creator creator);
         
     private:
         void RefreshTransactions();
@@ -208,9 +212,11 @@ namespace beam
         std::map<TxID, wallet::BaseTransaction::Ptr> m_Transactions;
         std::unordered_set<wallet::BaseTransaction::Ptr> m_TransactionsToUpdate;
         std::unordered_set<wallet::BaseTransaction::Ptr> m_NextTipTransactionToUpdate;
+        std::unordered_map<wallet::TxType, wallet::BaseTransaction::Creator> m_TxCreators;
         TxCompletedAction m_TxCompletedAction;
         uint32_t m_LastSyncTotal;
         uint32_t m_OwnedNodesOnline;
+
 
         std::vector<IWalletObserver*> m_subscribers;
     };

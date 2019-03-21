@@ -57,6 +57,8 @@ namespace beam { namespace wallet
     {
     public:
         using Ptr = std::shared_ptr<BaseTransaction>;
+        using Creator = std::function<BaseTransaction::Ptr (INegotiatorGateway&, beam::IWalletDB::Ptr, const TxID&)>;
+
         BaseTransaction(INegotiatorGateway& gateway
                       , beam::IWalletDB::Ptr walletDB
                       , const TxID& txID);
@@ -150,10 +152,15 @@ namespace beam { namespace wallet
             KernelConfirmation,
             OutputsConfirmation
         };
-    public:
+    public: 
+        static BaseTransaction::Ptr Create(INegotiatorGateway& gateway
+                            , beam::IWalletDB::Ptr walletDB
+                            , const TxID& txID);
+    private:
         SimpleTransaction(INegotiatorGateway& gateway
                         , beam::IWalletDB::Ptr walletDB
                         , const TxID& txID);
+
     private:
         TxType GetType() const override;
         void UpdateImpl() override;

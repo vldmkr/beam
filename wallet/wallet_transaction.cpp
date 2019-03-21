@@ -302,6 +302,14 @@ namespace beam { namespace wallet
         return false;
     }
 
+    BaseTransaction::Ptr SimpleTransaction::Create(INegotiatorGateway& gateway
+        , beam::IWalletDB::Ptr walletDB
+        , const TxID& txID)
+    {
+        //return make_shared<SimpleTransaction>(gateway, walletDB, txID);
+        return BaseTransaction::Ptr(new SimpleTransaction(gateway, walletDB, txID));
+    }
+
     SimpleTransaction::SimpleTransaction(INegotiatorGateway& gateway
                                         , beam::IWalletDB::Ptr walletDB
                                         , const TxID& txID)
