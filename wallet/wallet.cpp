@@ -147,6 +147,13 @@ namespace beam
 
     TxID Wallet::transfer_money2(const WalletID& from, const WalletID& to, const AmountList& amountList, Amount fee, const CoinIDList& coins, bool sender, TxType type, Height lifetime, Height responseTime, ByteBuffer&& message)
     {
+        auto tx = CreateNewTransaction(from, to, amountList, fee, coins, sender, type, lifetime, responseTime, move(message));
+        ProcessTransaction(tx);
+        return tx->GetTxID();
+    }
+
+    BaseTransaction::Ptr Wallet::CreateNewTransaction(const WalletID& from, const WalletID& to, const AmountList& amountList, Amount fee, const CoinIDList& coins, bool sender, TxType type, Height lifetime, Height responseTime, ByteBuffer&& message)
+    {
         auto receiverAddr = m_WalletDB->getAddress(to);
 
         if (receiverAddr)
@@ -164,7 +171,7 @@ namespace beam
 
         tx->SetParameter(TxParameterID::TransactionType, type, false);
         tx->SetParameter(TxParameterID::Lifetime, lifetime, false);
-        tx->SetParameter(TxParameterID::PeerResponseHeight, currentHeight + responseTime); 
+        tx->SetParameter(TxParameterID::PeerResponseHeight, currentHeight + responseTime);
         tx->SetParameter(TxParameterID::IsInitiator, true, false);
         tx->SetParameter(TxParameterID::AmountList, amountList, false);
         tx->SetParameter(TxParameterID::PreselectedCoins, coins, false);
@@ -183,9 +190,7 @@ namespace beam
         txDescription.m_status = TxStatus::Pending;
         txDescription.m_selfTx = (receiverAddr && receiverAddr->m_OwnID);
         m_WalletDB->saveTx(txDescription);
-
-        ProcessTransaction(tx);
-        return txID;
+        return tx;
     }
 
     TxID Wallet::split_coins(const WalletID& from, const AmountList& amountList, Amount fee, bool sender, Height lifetime, Height responseTime,  ByteBuffer&& message)
@@ -247,7 +252,9 @@ namespace beam
         {
             if (m_Transactions.find(tx.m_txId) == m_Transactions.end())
             {
-                auto t = constructTransaction(tx.m_txId, TxType::Simple);
+                TxType type;
+                getTxParameter(*m_WalletDB, tx.m_txId, TxParameterID::TransactionType, type);
+                auto t = constructTransaction(tx.m_txId, type);
                 if (t->SetParameter(TxParameterID::KernelProofHeight, Height(0), false)
                     && t->SetParameter(TxParameterID::KernelUnconfirmedHeight, Height(0), false))
                 {
@@ -267,7 +274,9 @@ namespace beam
     {
         if (tx.canResume() && m_Transactions.find(tx.m_txId) == m_Transactions.end())
         {
-            auto t = constructTransaction(tx.m_txId, TxType::Simple);
+            TxType type;
+            getTxParameter(*m_WalletDB, tx.m_txId, TxParameterID::TransactionType, type);
+            auto t = constructTransaction(tx.m_txId, type);
 
             m_Transactions.emplace(tx.m_txId, t);
             UpdateOnSynced(t);

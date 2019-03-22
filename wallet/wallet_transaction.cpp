@@ -945,11 +945,25 @@ namespace beam { namespace wallet
         return hasInputs || hasOutputs;
     }
 
+    bool TxBuilder::GetPeerKernels()
+    {
+        return m_Tx.GetParameter(TxParameterID::PeerKernels, m_PeerKernels);
+    }
+
     void TxBuilder::SignPartial()
     {
         // create signature
         Point::Native totalPublicExcess = GetPublicExcess();
         totalPublicExcess += m_PeerPublicExcess;
+        for (const auto& kernel : m_PeerKernels)
+        {
+            Point::Native pt;
+            if (pt.Import(kernel->m_Commitment))
+            {
+                totalPublicExcess += pt;
+            }
+        }
+        m_Kernel->m_vNested = move(m_PeerKernels);
         m_Kernel->m_Commitment = totalPublicExcess;
 
         m_Kernel->get_Hash(m_Message);
@@ -966,7 +980,7 @@ namespace beam { namespace wallet
         // final signature
         m_Kernel->m_Signature.m_NoncePub = GetPublicNonce() + m_PeerPublicNonce;
         m_Kernel->m_Signature.m_k = m_PartialSignature + m_PeerSignature;
-        
+
         StoreKernelID();
     }
 
@@ -1057,6 +1071,13 @@ namespace beam { namespace wallet
     {
         assert(m_Kernel);
         return *m_Kernel;
+    }
+
+    TxKernel::Ptr TxBuilder::MoveKernel()
+    { 
+        // this call clear m_Kernel
+        assert(m_Kernel);
+        return move(m_Kernel);
     }
 
     void TxBuilder::StoreKernelID()

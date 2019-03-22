@@ -208,6 +208,7 @@ namespace beam
             Lifetime = 15,
             PeerProtoVersion = 16,
             MaxHeight = 17,
+            PeerKernels = 18,
 
             AtomicSwapCoin = 20,
             AtomicSwapAmount = 21,

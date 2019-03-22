@@ -197,6 +197,7 @@ namespace beam { namespace wallet
         bool GetPeerPublicExcessAndNonce();
         bool GetPeerSignature();
         bool GetPeerInputsAndOutputs();
+        bool GetPeerKernels();
         void FinalizeSignature();
         Transaction::Ptr CreateTransaction();
         void SignPartial();
@@ -213,6 +214,7 @@ namespace beam { namespace wallet
         const ECC::Scalar::Native& GetOffset() const;
         const ECC::Scalar::Native& GetPartialSignature() const;
         const TxKernel& GetKernel() const;
+        TxKernel::Ptr MoveKernel();
         void StoreKernelID();
         std::string GetKernelIDString() const;
         bool UpdateMaxHeight();
@@ -243,6 +245,7 @@ namespace beam { namespace wallet
         std::vector<Input::Ptr> m_PeerInputs;
         std::vector<Output::Ptr> m_PeerOutputs;
         ECC::Scalar::Native m_PeerOffset;
+        std::vector<TxKernel::Ptr> m_PeerKernels;
         Height m_PeerMaxHeight;
 
         // deduced values,

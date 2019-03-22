@@ -42,7 +42,208 @@ namespace beam { namespace wallet {
 
     void OneSideTransaction::UpdateImpl()
     {
+        bool isSender = GetMandatoryParameter<bool>(TxParameterID::IsSender);
 
+        AmountList amoutList;
+        if (!GetParameter(TxParameterID::AmountList, amoutList))
+        {
+            amoutList = AmountList{ GetMandatoryParameter<Amount>(TxParameterID::Amount) };
+        }
+
+        auto sharedBuilder = make_shared<TxBuilder>(*this, amoutList, GetMandatoryParameter<Amount>(TxParameterID::Fee));
+        TxBuilder& builder = *sharedBuilder;
+
+        builder.GenerateBlindingExcess();
+        if (!builder.GetInitialTxParams())
+        {
+            LOG_INFO() << GetTxID() << (isSender ? " Sending " : " Receiving ")
+                << PrintableAmount(builder.GetAmount())
+                << " (fee: " << PrintableAmount(builder.GetFee()) << ")";
+
+            if (isSender)
+            {
+                Height maxResponseHeight = 0;
+                if (GetParameter(TxParameterID::PeerResponseHeight, maxResponseHeight))
+                {
+                    LOG_INFO() << GetTxID() << " Max height for response: " << maxResponseHeight;
+                }
+
+                builder.SelectInputs();
+                builder.AddChange();
+            }
+
+            //if (isSelfTx || !isSender)
+            //{
+            //    // create receiver utxo
+            //    for (const auto& amount : builder.GetAmountList())
+            //    {
+            //        builder.GenerateNewCoin(amount, false);
+            //    }
+            //}
+
+            UpdateTxDescription(TxStatus::InProgress);
+
+            if (!builder.GetCoins().empty())
+            {
+                sharedBuilder->CreateOutputs();
+                sharedBuilder->FinalizeOutputs();
+            }
+        }
+
+        uint64_t nAddrOwnID;
+        if (!GetParameter(TxParameterID::MyAddressID, nAddrOwnID))
+        {
+            WalletID wid;
+            if (GetParameter(TxParameterID::MyID, wid))
+            {
+                auto waddr = m_WalletDB->getAddress(wid);
+                if (waddr && waddr->m_OwnID)
+                    SetParameter(TxParameterID::MyAddressID, waddr->m_OwnID);
+            }
+        }
+
+        builder.GenerateNonce();
+
+        if (!builder.UpdateMaxHeight())
+        {
+            OnFailed(TxFailureReason::MaxHeightIsUnacceptable, true);
+            return;
+        }
+
+        if (!builder.GetPeerKernels())
+        {
+            OnFailed(TxFailureReason::MaxHeightIsUnacceptable, true);
+        }
+
+        builder.CreateKernel();
+        builder.SignPartial();
+
+        if (!builder.GetPeerInputsAndOutputs())
+        {
+            OnFailed(TxFailureReason::MaxHeightIsUnacceptable, true);
+            return;
+        }
+        //if (!isSelfTx && !builder.GetPeerSignature())
+        //{
+        //    if (txState == State::Initial)
+        //    {
+        //        // invited participant
+        //        assert(!IsInitiator());
+
+        //        UpdateTxDescription(TxStatus::Registering);
+        //        ConfirmInvitation(builder, !hasPeersInputsAndOutputs);
+
+        //        uint32_t nVer = 0;
+        //        if (GetParameter(TxParameterID::PeerProtoVersion, nVer))
+        //        {
+        //            // for peers with new flow, we assume that after we have responded, we have to switch to the state of awaiting for proofs
+        //            SetParameter(TxParameterID::TransactionRegistered, true);
+
+        //            SetState(State::KernelConfirmation);
+        //            ConfirmKernel(builder.GetKernel());
+        //        }
+        //        else
+        //        {
+        //            SetState(State::InvitationConfirmation);
+        //        }
+        //        return;
+        //    }
+        //    if (IsInitiator())
+        //    {
+        //        return;
+        //    }
+        //}
+
+        if (IsInitiator() && !builder.IsPeerSignatureValid())
+        {
+            OnFailed(TxFailureReason::InvalidPeerSignature, true);
+            return;
+        }
+
+        builder.FinalizeSignature();
+
+        bool isRegistered = false;
+        if (!GetParameter(TxParameterID::TransactionRegistered, isRegistered))
+        {
+            //if (!isSelfTx && (!hasPeersInputsAndOutputs || IsInitiator()))
+            //{
+            //    if (txState == State::Invitation)
+            //    {
+            //        UpdateTxDescription(TxStatus::Registering);
+            //        ConfirmTransaction(builder, !hasPeersInputsAndOutputs);
+            //        SetState(State::PeerConfirmation);
+            //    }
+            //    if (!hasPeersInputsAndOutputs)
+            //    {
+            //        return;
+            //    }
+            //}
+
+            if (CheckExpired())
+            {
+                return;
+            }
+
+            // Construct transaction
+            auto transaction = builder.CreateTransaction();
+
+            // Verify final transaction
+            TxBase::Context::Params pars;
+            TxBase::Context ctx(pars);
+            if (!transaction->IsValid(ctx))
+            {
+                OnFailed(TxFailureReason::InvalidTransaction, true);
+                return;
+            }
+            m_Gateway.register_tx(GetTxID(), transaction);
+//            SetState(State::Registration);
+            return;
+        }
+
+        if (!isRegistered)
+        {
+            OnFailed(TxFailureReason::FailedToRegister, true);
+            return;
+        }
+
+        Height hProof = 0;
+        GetParameter(TxParameterID::KernelProofHeight, hProof);
+        if (!hProof)
+        {
+            //if (txState == State::Registration)
+            //{
+            //    uint32_t nVer = 0;
+            //    if (!GetParameter(TxParameterID::PeerProtoVersion, nVer))
+            //    {
+            //        // notify old peer that transaction has been registered
+            //        NotifyTransactionRegistered();
+            //    }
+            //}
+            //SetState(State::KernelConfirmation);
+            ConfirmKernel(builder.GetKernel());
+            return;
+        }
+
+        vector<Coin> modified = m_WalletDB->getCoinsByTx(GetTxID());
+        for (auto& coin : modified)
+        {
+            bool bIn = (coin.m_createTxId == m_ID);
+            bool bOut = (coin.m_spentTxId == m_ID);
+            if (bIn || bOut)
+            {
+                if (bIn)
+                {
+                    coin.m_confirmHeight = std::min(coin.m_confirmHeight, hProof);
+                    coin.m_maturity = hProof + Rules::get().Maturity.Std; // so far we don't use incubation for our created outputs
+                }
+                if (bOut)
+                    coin.m_spentHeight = std::min(coin.m_spentHeight, hProof);
+            }
+        }
+
+        GetWalletDB()->save(modified);
+
+        CompleteTx();
     }
 }
 }

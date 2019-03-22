@@ -1822,14 +1822,14 @@ namespace
         io::Reactor::Ptr mainReactor{ io::Reactor::create() };
         io::Reactor::Scope scope(*mainReactor);
 
-        int completedCount = 2;
+        int completedCount = 1;
         auto f = [&completedCount, mainReactor](auto)
         {
             --completedCount;
             if (completedCount == 0)
             {
                 mainReactor->stop();
-                completedCount = 2;
+                completedCount = 1;
             }
         };
 
@@ -1840,7 +1840,73 @@ namespace
         sender.m_Wallet.RegisterTransactionType(wallet::TxType::OneSide, wallet::OneSideTransaction::Create);
         receiver.m_Wallet.RegisterTransactionType(wallet::TxType::OneSide, wallet::OneSideTransaction::Create);
 
-        auto txId = sender.m_Wallet.transfer_money2(sender.m_WalletID, receiver.m_WalletID, AmountList{ 4 }, 2, {}, true, wallet::TxType::OneSide);
+
+        TxID receiverTxID = wallet::GenerateTxID();
+        auto receiverTx = wallet::OneSideTransaction::Create(receiver.m_Wallet, receiver.m_WalletDB, receiverTxID);
+        shared_ptr<wallet::OneSideTransaction> oneSideTx = static_pointer_cast<wallet::OneSideTransaction>(receiverTx);
+
+        oneSideTx->SetParameter(wallet::TxParameterID::IsSender, false);
+        //receiver.m_Wallet.ProcessTransaction(receiverTx);
+        
+        wallet::TxBuilder receiverBuilder(*oneSideTx, AmountList{ 4 }, 0);
+
+        receiverBuilder.GenerateBlindingExcess();
+        receiverBuilder.AddOutput(1, false);
+        receiverBuilder.AddOutput(3, false);
+        receiverBuilder.FinalizeOutputs();
+        receiverBuilder.CreateKernel();
+        receiverBuilder.SignPartial();
+        receiverBuilder.FinalizeSignature();
+
+        vector<TxKernel::Ptr> kernels;
+        kernels.push_back(receiverBuilder.MoveKernel());
+        const auto& outputs = receiverBuilder.GetOutputs();
+
+        //oneSideTx->SetParameter(wallet::TxParameterID::PeerKernels, kernels);
+        //oneSideTx->SetParameter(wallet::TxParameterID::PeerOutputs, outputs);
+        //oneSideTx->SetParameter(wallet::TxParameterID::PeerOffset, receiverBuilder.GetOffset());
+
+        {
+            auto tx = sender.m_Wallet.CreateNewTransaction(sender.m_WalletID, receiver.m_WalletID, AmountList{ 4 }, 1, {}, true, wallet::TxType::OneSide);
+            WALLET_CHECK(tx->GetTxID() != receiverTxID);
+            tx->SetParameter(wallet::TxParameterID::PeerKernels, kernels);
+            tx->SetParameter(wallet::TxParameterID::PeerOutputs, outputs);
+            tx->SetParameter(wallet::TxParameterID::PeerOffset, receiverBuilder.GetOffset());
+            sender.m_Wallet.ProcessTransaction(tx);
+            mainReactor->run();
+
+            auto receiverCoins = receiver.GetCoins();
+            WALLET_CHECK(receiverCoins.size() == 0);
+        }
+        {
+            receiver.m_Wallet.ProcessTransaction(receiverTx);
+
+            mainReactor->run();
+
+            auto receiverCoins = receiver.GetCoins();
+            WALLET_CHECK(receiverCoins.size() == 2);
+        }
+
+        {
+            auto tx = sender.m_Wallet.CreateNewTransaction(sender.m_WalletID, receiver.m_WalletID, AmountList{ 4 }, 1, {}, true, wallet::TxType::OneSide);
+            WALLET_CHECK(tx->GetTxID() != receiverTxID);
+            tx->SetParameter(wallet::TxParameterID::PeerKernels, kernels);
+            tx->SetParameter(wallet::TxParameterID::PeerOutputs, outputs);
+            tx->SetParameter(wallet::TxParameterID::PeerOffset, receiverBuilder.GetOffset());
+            sender.m_Wallet.ProcessTransaction(tx);
+            mainReactor->run();
+
+            auto receiverCoins = receiver.GetCoins();
+            WALLET_CHECK(receiverCoins.size() == 2);
+        }
+        {
+            receiver.m_Wallet.ProcessTransaction(receiverTx);
+
+            mainReactor->run();
+
+            auto receiverCoins = receiver.GetCoins();
+            WALLET_CHECK(receiverCoins.size() == 4);
+        }
     }
 }
 
@@ -1854,26 +1920,28 @@ int main()
     Rules::get().FakePoW = true;
     Rules::get().UpdateChecksum();
 
-    TestP2PWalletNegotiationST();
-    //TestP2PWalletReverseNegotiationST();
+    //TestP2PWalletNegotiationST();
+    ////TestP2PWalletReverseNegotiationST();
 
-    {
-        io::Reactor::Ptr mainReactor{ io::Reactor::create() };
-        io::Reactor::Scope scope(*mainReactor);
-        //TestWalletNegotiation(CreateWalletDB<TestWalletDB>(), CreateWalletDB<TestWalletDB2>());
-        TestWalletNegotiation(createSenderWalletDB(), createReceiverWalletDB());
-    }
+    //{
+    //    io::Reactor::Ptr mainReactor{ io::Reactor::create() };
+    //    io::Reactor::Scope scope(*mainReactor);
+    //    //TestWalletNegotiation(CreateWalletDB<TestWalletDB>(), CreateWalletDB<TestWalletDB2>());
+    //    TestWalletNegotiation(createSenderWalletDB(), createReceiverWalletDB());
+    //}
 
-    TestSplitTransaction();
+    //TestSplitTransaction();
 
-    //TestSwapTransaction();
+    ////TestSwapTransaction();
 
-    TestTxToHimself();
+    //TestTxToHimself();
 
-    TestExpiredTransaction();
+    //TestExpiredTransaction();
 
-    TestTransactionUpdate();
-    //TestTxPerformance();
+    //TestTransactionUpdate();
+    ////TestTxPerformance();
+
+    TestOneSideTransaction();
 
     assert(g_failureCount == 0);
     return WALLET_CHECK_RESULT;
