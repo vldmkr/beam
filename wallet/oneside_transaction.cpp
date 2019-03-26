@@ -54,6 +54,12 @@ namespace beam { namespace wallet {
         TxBuilder& builder = *sharedBuilder;
 
         builder.GenerateBlindingExcess();
+
+        if (!builder.GetPeerKernels())
+        {
+            OnFailed(TxFailureReason::MaxHeightIsUnacceptable, true);
+        }
+
         if (!builder.GetInitialTxParams())
         {
             LOG_INFO() << GetTxID() << (isSender ? " Sending " : " Receiving ")
@@ -108,11 +114,6 @@ namespace beam { namespace wallet {
         {
             OnFailed(TxFailureReason::MaxHeightIsUnacceptable, true);
             return;
-        }
-
-        if (!builder.GetPeerKernels())
-        {
-            OnFailed(TxFailureReason::MaxHeightIsUnacceptable, true);
         }
 
         builder.CreateKernel();

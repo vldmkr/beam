@@ -1848,7 +1848,7 @@ namespace
         oneSideTx->SetParameter(wallet::TxParameterID::IsSender, false);
         //receiver.m_Wallet.ProcessTransaction(receiverTx);
         
-        wallet::TxBuilder receiverBuilder(*oneSideTx, AmountList{ 4 }, 0);
+        wallet::TxBuilder receiverBuilder(*oneSideTx, AmountList{ 4 }, 2);
 
         receiverBuilder.GenerateBlindingExcess();
         receiverBuilder.AddOutput(1, false);

@@ -745,7 +745,8 @@ namespace beam { namespace wallet
             }
             m_Tx.GetWalletDB()->save(coins);
         }
-        Amount amountWithFee = GetAmount() + m_Fee;
+        Amount peerKernelsFee = accumulate(begin(m_PeerKernels), end(m_PeerKernels), Amount(0UL), [](const auto& v, const auto& k) {return v + k->m_Fee; });
+        Amount amountWithFee = GetAmount() + m_Fee + peerKernelsFee;
         if (preselectedAmount < amountWithFee)
         {
             auto selectedCoins = m_Tx.GetWalletDB()->selectCoins(amountWithFee - preselectedAmount);
