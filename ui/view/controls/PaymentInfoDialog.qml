@@ -1,8 +1,9 @@
     import QtQuick 2.11
-    import QtQuick.Controls 2.3
+    import QtQuick.Controls 2.4
+
     import QtQuick.Layouts 1.11
-    import "."
     import Beam.Wallet 1.0
+    import "."
 
     Dialog {
         property PaymentInfoItem model
@@ -93,27 +94,20 @@
                         return model && !model.isValid && paymentProofInput.length > 0;
                     }
             
-                    Flickable {
-                        id: flickable1
+                    ScrollView {
+                        id: scrollView
                         clip: true
-                        //Layout.fillHeight: true
                         Layout.fillWidth: true
-                        Layout.preferredHeight: paymentProofInput.height
                         Layout.maximumHeight: 130
-                     //   contentWidth: parent.width
-                     //   contentHeight: paymentProofInput.height
-
-                        SFTextInput {
+                        
+                        SFTextArea {
                             id: paymentProofInput
-                            anchors.left: parent.left
-                            anchors.right: parent.right
                             focus: true
                             activeFocusOnTab: true
                             font.pixelSize: 14
                             wrapMode: TextInput.Wrap
                             color: verifyLayout.isInvalidPaymentProof() ? Style.validator_color : Style.white
-                            backgroundColor: color
-                            text: model ? model.paymentProof : ""
+                             text: model ? model.paymentProof : ""
                             Binding {
                                 target: model
                                 property: "paymentProof"
@@ -121,7 +115,13 @@
                             }
                         }
                     }
-
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.topMargin: -16
+                        color: paymentProofInput.color
+                        Layout.preferredHeight: (paymentProofInput.activeFocus || paymentProofInput.hovered) ? 2 : 1
+                        opacity: (paymentProofInput.activeFocus || paymentProofInput.hovered) ? 0.3 : 0.1
+                    }
                 
                     SFText {
                         Layout.fillWidth: true

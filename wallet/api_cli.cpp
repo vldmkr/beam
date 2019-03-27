@@ -287,6 +287,83 @@ namespace beam
                 doResponse(id, CreateAddress::Response{ address.m_walletID });
             }
 
+            void onMessage(int id, const DeleteAddress& data) override
+            {
+                LOG_DEBUG() << "DeleteAddress(id = " << id << " address = " << std::to_string(data.address) << ")";
+
+                auto addr = _walletDB->getAddress(data.address);
+
+                if (addr)
+                {
+                    if (addr->m_OwnID)
+                    {
+                        _wnet.DeleteOwnAddress(addr->m_OwnID);
+                    }
+
+                    _walletDB->deleteAddress(data.address);
+
+                    doResponse(id, DeleteAddress::Response{});
+                }
+                else
+                {
+                    doError(id, INVALID_ADDRESS, "Provided address doesn't exist.");
+                }
+            }
+
+            void onMessage(int id, const EditAddress& data) override
+            {
+                LOG_DEBUG() << "EditAddress(id = " << id << " address = " << std::to_string(data.address) << ")";
+
+                auto addr = _walletDB->getAddress(data.address);
+
+                if (addr)
+                {
+                    if (addr->m_OwnID)
+                    {
+                        if (data.comment)
+                        {
+                            addr->setLabel(*data.comment);
+                        }
+
+                        if (data.expiration)
+                        {
+                            switch (*data.expiration)
+                            {
+                            case EditAddress::OneDay:
+                                addr->makeActive(24 * 60 * 60);
+                                break;
+                            case EditAddress::Expired:
+                                addr->makeExpired();
+                                break;
+                            case EditAddress::Never:
+                                addr->makeEternal();
+                                break;
+                            }
+                        }
+
+                        _walletDB->saveAddress(*addr);
+                        _wnet.AddOwnAddress(*addr);
+
+                        doResponse(id, EditAddress::Response{});
+                    }
+                    else
+                    {
+                        doError(id, INVALID_ADDRESS, "You can edit only own address.");
+                    }
+                }
+                else
+                {
+                    doError(id, INVALID_ADDRESS, "Provided address doesn't exist.");
+                }
+            }
+
+            void onMessage(int id, const AddrList& data) override
+            {
+                LOG_DEBUG() << "AddrList(id = " << id << ")";
+
+                doResponse(id, AddrList::Response{ _walletDB->getAddresses(data.own) });
+            }
+
             void onMessage(int id, const ValidateAddress& data) override
             {
                 LOG_DEBUG() << "ValidateAddress( address = " << std::to_string(data.address) << ")";
@@ -824,6 +901,7 @@ int main(int argc, char* argv[])
 
             po::store(po::command_line_parser(argc, argv)
                 .options(desc)
+                .style(po::command_line_style::default_style ^ po::command_line_style::allow_guessing)
                 .run(), vm);
 
             if (vm.count(cli::HELP))

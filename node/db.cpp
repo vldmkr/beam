@@ -58,9 +58,6 @@ namespace beam {
 #define TblEvents_Body			"Body"
 #define TblEvents_Key			"Key"
 
-#define TblCompressed			"Macroblocks"
-#define TblCompressed_Row1		"RowLast"
-
 #define TblPeer					"Peers"
 #define TblPeer_Key				"Key"
 #define TblPeer_Rating			"Rating"
@@ -284,9 +281,6 @@ void NodeDB::Open(const char* szPath)
 	}
 
 	const uint64_t nVersionTop = 17;
-	const uint64_t nVersionMacro0 = 16;
-	const uint64_t nVersionDummy0 = 15;
-	const uint64_t nVersionNoBbsPoW = 14;
 
 	Transaction t(*this);
 
@@ -298,37 +292,8 @@ void NodeDB::Open(const char* szPath)
 	else
 	{
 		uint64_t nVer = ParamIntGetDef(ParamID::DbVer);
-
-		switch (nVer)
-		{
-		case nVersionNoBbsPoW:
-			ExecQuick("ALTER TABLE [" TblBbs "] ADD [" TblBbs_Nonce "] INTEGER");
-			// no break;
-
-		case nVersionDummy0:
-			ExecQuick("DROP INDEX [Idx" TblDummy "H]");
-			ExecQuick("DROP TABLE [" TblDummy "]");
-			CreateTableDummy();
-			// no break;
-
-		case nVersionMacro0:
-			CreateTableTxos();
-			ExecQuick("ALTER TABLE [" TblStates "] ADD [" TblStates_Extra "] BLOB");
-			ExecQuick("ALTER TABLE [" TblStates "] ADD [" TblStates_Txos "] INTEGER");
-			ExecQuick("CREATE INDEX [Idx" TblStates TblStates_Txos "] ON [" TblStates "] ([" TblStates_Txos "]);");
-
-			// rebuild States. Remove "Rollback" column
-			ThrowError("upgrade not supported yet");
-
-			ParamSet(ParamID::DbVer, &nVersionTop, NULL);
-			// no break;
-
-		case nVersionTop:
-			break;
-
-		default:
-			ThrowError("wrong version");
-		}
+		if (nVer < nVersionTop)
+			throw NodeDBUpgradeException("Node upgrade is not supported. Please, remove node.db and tempmb files");
 	}
 
 	t.Commit();
@@ -404,11 +369,6 @@ void NodeDB::Create()
 
 	ExecQuick("CREATE INDEX [Idx" TblEvents "] ON [" TblEvents "] ([" TblEvents_Height "],[" TblEvents_Body "]);");
 	ExecQuick("CREATE INDEX [Idx" TblEvents TblEvents_Key "] ON [" TblEvents "] ([" TblEvents_Key "]);");
-
-	ExecQuick("CREATE TABLE [" TblCompressed "] ("
-		"[" TblCompressed_Row1	"] INTEGER NOT NULL,"
-		"PRIMARY KEY (" TblCompressed_Row1 "),"
-		"FOREIGN KEY (" TblCompressed_Row1 ") REFERENCES " TblStates "(OID))");
 
 	ExecQuick("CREATE TABLE [" TblPeer "] ("
 		"[" TblPeer_Key			"] BLOB NOT NULL,"
@@ -1673,29 +1633,6 @@ bool NodeDB::WalkerEvent::MoveNext()
 	else
 		m_Rs.get(2, m_Key);
 	return true;
-}
-
-void NodeDB::EnumMacroblocks(WalkerState& x)
-{
-	x.m_Rs.Reset(Query::MacroblockEnum, "SELECT " TblStates "." TblTips_Height "," TblCompressed_Row1
-		" FROM " TblCompressed " LEFT JOIN " TblStates " ON " TblCompressed_Row1 "=" TblStates ".rowid"
-		" ORDER BY " TblStates "." TblTips_Height " DESC");
-}
-
-void NodeDB::MacroblockIns(uint64_t rowid)
-{
-	Recordset rs(*this, Query::MacroblockIns, "INSERT INTO " TblCompressed " VALUES(?)");
-	rs.put(0, rowid);
-	rs.Step();
-	TestChanged1Row();
-}
-
-void NodeDB::MacroblockDel(uint64_t rowid)
-{
-	Recordset rs(*this, Query::MacroblockDel, "DELETE FROM " TblCompressed " WHERE " TblCompressed_Row1 "=?");
-	rs.put(0, rowid);
-	rs.Step();
-	TestChanged1Row();
 }
 
 void NodeDB::EnumPeers(WalkerPeer& x)

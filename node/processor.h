@@ -39,7 +39,6 @@ class NodeProcessor
 
 	struct MultiblockContext;
 
-	bool GoForward(uint64_t, MultiblockContext&);
 	void RollbackTo(Height);
 	Height PruneOld();
 	Height RaiseFossil(Height);
@@ -212,8 +211,6 @@ public:
 	virtual void OnPeerInsane(const PeerID&) {}
 	virtual void OnNewState() {}
 	virtual void OnRolledBack() {}
-	virtual void AdjustFossilEnd(Height&) {}
-	virtual bool OpenMacroblock(Block::BodyBase::RW&, const NodeDB::StateID&) { return false; }
 	virtual void OnModified() {}
 
 	// parallel context-free execution

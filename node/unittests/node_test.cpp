@@ -815,19 +815,7 @@ namespace beam
 		{
 			DeleteFile(g_sz2);
 
-			struct MyNodeProcessorX
-				:public NodeProcessor
-			{
-				std::string m_sPathMB;
-				virtual bool OpenMacroblock(Block::BodyBase::RW& rw, const NodeDB::StateID&) override
-				{
-					rw.m_sPath = m_sPathMB;
-					rw.ROpen();
-					return true;
-				}
-			};
-
-			MyNodeProcessorX np2;
+			NodeProcessor np2;
 			np2.Initialize(g_sz2);
 			np2.OnTreasury(g_Treasury);
 
@@ -849,17 +837,9 @@ namespace beam
 			verify_test(np2.ImportMacroBlock(rwData));
 			rwData.Close();
 
-			np2.get_DB().MacroblockIns(np2.m_Cursor.m_Sid.m_Row);
-			np2.m_sPathMB = g_sz3;
-
-			// Although NodeProcessor can import macroblocks not from the beginning - currently this mode is not supported, it will consider only the most recent
-			// macroblock during initialization, and kernel retrieval.
-			// try kernel proofs. Must be retrieved from the macroblock. Because of the above this test is only for kernels which are mature enough
+			// try kernel proofs.
 			for (size_t i = 0; i < np.m_Wallet.m_MyKernels.size(); i++)
 			{
-				if (np.m_Wallet.m_MyKernels[i].m_Height <= hMid)
-					continue;
-
 				TxKernel krn;
 				np.m_Wallet.m_MyKernels[i].Export(krn);
 
@@ -881,15 +861,6 @@ namespace beam
 	}
 
 
-	class MyNodeProcessor2
-		:public NodeProcessor
-	{
-	public:
-		// NodeProcessor
-		virtual void AdjustFossilEnd(Height& h) override { h = 0; } // don't fossile anything, since we're not creating macroblocks
-	};
-
-
 	void TestNodeProcessor2(std::vector<BlockPlus::Ptr>& blockChain)
 	{
 		NodeProcessor::Horizon horz;
@@ -900,7 +871,7 @@ namespace beam
 		size_t nMid = blockChain.size() / 2;
 
 		{
-			MyNodeProcessor2 np;
+			NodeProcessor np;
 			np.m_Horizon = horz;
 			np.Initialize(g_sz);
 			np.OnTreasury(g_Treasury);
@@ -913,7 +884,7 @@ namespace beam
 		}
 
 		{
-			MyNodeProcessor2 np;
+			NodeProcessor np;
 			np.m_Horizon = horz;
 			np.Initialize(g_sz);
 
@@ -930,7 +901,7 @@ namespace beam
 		}
 
 		{
-			MyNodeProcessor2 np;
+			NodeProcessor np;
 			np.m_Horizon = horz;
 			np.Initialize(g_sz);
 
@@ -942,7 +913,7 @@ namespace beam
 		}
 
 		{
-			MyNodeProcessor2 np;
+			NodeProcessor np;
 			np.m_Horizon = horz;
 			np.Initialize(g_sz);
 
@@ -959,7 +930,7 @@ namespace beam
 		}
 
 		{
-			MyNodeProcessor2 np;
+			NodeProcessor np;
 			np.m_Horizon = horz;
 			np.Initialize(g_sz);
 
@@ -976,7 +947,7 @@ namespace beam
 		}
 
 		{
-			MyNodeProcessor2 np;
+			NodeProcessor np;
 			np.m_Horizon = horz;
 
 			NodeProcessor::StartParams sp;
@@ -1066,7 +1037,50 @@ namespace beam
 		verify_test(np.m_Cursor.m_ID.m_Height == Rules::HeightGenesis - 1); // should fall back to start
 		verify_test(!np.m_SyncData.m_TxoLo); // next attempt should be with TxLo disabled
 
+
+		// 1.1 attempt - tamper with txlo. Modify block offset
+		np.m_SyncData.m_TxoLo = np.m_SyncData.m_Target.m_Height / 2;
+		bTampered = false;
+		for (Height h = Rules::HeightGenesis; h <= np.m_SyncData.m_TxoLo; h++)
+		{
+			NodeDB::StateID sid;
+			sid.m_Row = npSrc.FindActiveAtStrict(h);
+			sid.m_Height = h;
+
+			ByteBuffer bbE, bbP;
+			verify_test(npSrc.GetBlock(sid, &bbE, &bbP, 0, np.m_SyncData.m_TxoLo, np.m_SyncData.m_Target.m_Height));
+
+			if (!bTampered)
+			{
+				Deserializer der;
+				der.reset(bbP);
+
+				Block::BodyBase bbb;
+				TxVectors::Perishable txvp;
+				der & bbb;
+				der & txvp;
+
+				bbb.m_Offset.m_Value.Inc();
+
+				Serializer ser;
+				ser & bbb;
+				ser & txvp;
+				ser.swap_buf(bbP);
+
+				bTampered = true;
+			}
+
+			Block::SystemState::ID id;
+			blockChain[h - 1]->m_Hdr.get_ID(id);
+			verify_test(np.OnBlock(id, bbP, bbE, pid) == NodeProcessor::DataStatus::Accepted);
+		}
+
+		np.TryGoUp();
+		verify_test(np.m_Cursor.m_ID.m_Height == Rules::HeightGenesis - 1); // should fall back to start
+		verify_test(!np.m_SyncData.m_TxoLo); // next attempt should be with TxLo disabled
+
 		// 2nd attempt. Tamper with the non-naked output
+		np.m_SyncData.m_TxoLo = np.m_SyncData.m_Target.m_Height / 2;
 		bTampered = false;
 		for (Height h = Rules::HeightGenesis; h <= np.m_SyncData.m_Target.m_Height; h++)
 		{
@@ -1123,6 +1137,8 @@ namespace beam
 		}
 
 		verify_test(bTampered);
+		verify_test(np.m_SyncData.m_TxoLo);
+
 		// 3rd attempt. enforce "naked" output. The node won't notice a problem until all the blocks are fed
 		bTampered = false;
 
@@ -1176,7 +1192,69 @@ namespace beam
 
 			if (bLast)
 			{
-				verify_test(np.m_Cursor.m_ID.m_Height == h - 1);
+				verify_test(np.m_Cursor.m_ID.m_Height == Rules::HeightGenesis - 1);
+				break;
+			}
+
+			verify_test(np.m_Cursor.m_ID.m_Height == h);
+		}
+
+		verify_test(!np.m_SyncData.m_TxoLo);
+
+		// 3.1 Same as above, but now TxoLo is zero, Node should not erase all the blocks on error
+		Height hTampered = 0;
+
+		for (Height h = np.m_Cursor.m_ID.m_Height + 1; ; h++)
+		{
+			NodeDB::StateID sid;
+			sid.m_Row = npSrc.FindActiveAtStrict(h);
+			sid.m_Height = h;
+
+			ByteBuffer bbE, bbP;
+			verify_test(npSrc.GetBlock(sid, &bbE, &bbP, 0, np.m_SyncData.m_TxoLo, np.m_SyncData.m_Target.m_Height));
+
+			if (!hTampered)
+			{
+				Deserializer der;
+				der.reset(bbP);
+
+				Block::BodyBase bbb;
+				TxVectors::Perishable txvp;
+				der & bbb;
+				der & txvp;
+
+				for (size_t j = 0; j < txvp.m_vOutputs.size(); j++)
+				{
+					Output& outp = *txvp.m_vOutputs[j];
+					if (outp.m_pConfidential || outp.m_pPublic)
+					{
+						outp.m_pConfidential.reset();
+						outp.m_pPublic.reset();
+						hTampered = h;
+						break;
+					}
+				}
+
+				if (hTampered)
+				{
+					Serializer ser;
+					ser & bbb;
+					ser & txvp;
+					ser.swap_buf(bbP);
+				}
+			}
+
+			Block::SystemState::ID id;
+			blockChain[h - 1]->m_Hdr.get_ID(id);
+			verify_test(np.OnBlock(id, bbP, bbE, pid) == NodeProcessor::DataStatus::Accepted);
+
+			bool bLast = (h == np.m_SyncData.m_Target.m_Height);
+
+			np.TryGoUp();
+
+			if (bLast)
+			{
+				verify_test(np.m_Cursor.m_ID.m_Height == hTampered - 1);
 				break;
 			}
 
@@ -1184,7 +1262,7 @@ namespace beam
 		}
 
 		// 4th attempt. provide valid data
-		for (Height h = np.m_Cursor.m_ID.m_Height + 1; ; h++)
+		for (Height h = np.m_Cursor.m_ID.m_Height + 1; h <= blockChain.size(); h++)
 		{
 			NodeDB::StateID sid;
 			sid.m_Row = npSrc.FindActiveAtStrict(h);
@@ -1195,18 +1273,12 @@ namespace beam
 
 			Block::SystemState::ID id;
 			blockChain[h - 1]->m_Hdr.get_ID(id);
-			verify_test(np.OnBlock(id, bbP, bbE, pid) == NodeProcessor::DataStatus::Accepted);
-
-			bool bLast = (h == np.m_SyncData.m_Target.m_Height);
-
-			np.TryGoUp();
-			verify_test(np.m_Cursor.m_ID.m_Height == h);
-
-			if (bLast)
-				break;
+			np.OnBlock(id, bbP, bbE, pid);
 		}
 
+		np.TryGoUp();
 		verify_test(!np.IsFastSync());
+		verify_test(np.m_Cursor.m_ID.m_Height == blockChain.size());
 	}
 
 	const uint16_t g_Port = 25003; // don't use the default port to prevent collisions with running nodes, beacons and etc.

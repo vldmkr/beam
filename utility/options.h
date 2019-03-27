@@ -33,9 +33,6 @@ namespace beam
         extern const char* STRATUM_USE_TLS;
         extern const char* STORAGE;
         extern const char* WALLET_STORAGE;
-        extern const char* HISTORY;
-        extern const char* TEMP;
-        extern const char* IMPORT;
         extern const char* MINING_THREADS;
         extern const char* VERIFICATION_THREADS;
         extern const char* NODE_PEER;
@@ -60,8 +57,10 @@ namespace beam
         extern const char* EXPORT_MINER_KEY;
         extern const char* EXPORT_OWNER_KEY;
         extern const char* KEY_SUBKEY;
-        extern const char* KEY_OWNER;
-        extern const char* KEY_MINE;
+        extern const char* KEY_OWNER;  // deprecated
+        extern const char* OWNER_KEY;
+        extern const char* KEY_MINE;  // deprecated
+        extern const char* MINER_KEY;
         extern const char* BBS_ENABLE;
         extern const char* NEW_ADDRESS;
         extern const char* CANCEL_TX;
@@ -99,6 +98,8 @@ namespace beam
         extern const char* IMPORT_ADDRESSES;
         extern const char* IMPORT_EXPORT_PATH;
         extern const char* IP_WHITELIST;
+		extern const char* HORIZON_HI;
+		extern const char* HORIZON_LO;
 
         // wallet api
         extern const char* API_USE_HTTP;

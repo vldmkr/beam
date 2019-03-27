@@ -20,6 +20,14 @@
 
 namespace beam {
 
+class NodeDBUpgradeException : public std::runtime_error
+{
+public:
+    NodeDBUpgradeException(const char* message)
+        : std::runtime_error(message)
+    {}
+};
+
 class NodeDB
 {
 public:
@@ -38,7 +46,7 @@ public:
 			FossilHeight, // Height starting from which and below original blocks are erased
 			CfgChecksum,
 			MyID,
-			SyncTarget,
+			SyncTarget, // deprecated
 			LoHorizon, // Height of no-return. Navigation is impossible below it
 			Treasury,
 			DummyID, // hash of keys used to create UTXOs (owner key, dummy key)
@@ -108,9 +116,6 @@ public:
 			EventDel,
 			EventEnum,
 			EventFind,
-			MacroblockEnum,
-			MacroblockIns,
-			MacroblockDel,
 			PeerAdd,
 			PeerDel,
 			PeerEnum,
@@ -301,10 +306,6 @@ public:
 
 	void assert_valid(); // diagnostic, for tests only
 
-	void EnumMacroblocks(WalkerState&); // highest to lowest
-	void MacroblockIns(uint64_t rowid);
-	void MacroblockDel(uint64_t rowid);
-
 	void InsertEvent(Height, const Blob&, const Blob& key);
 	void DeleteEventsFrom(Height);
 
@@ -424,7 +425,7 @@ public:
 	uint64_t DeleteSpentTxos(const HeightRange&, TxoID id0); // delete Txos where (SpendHeight is within range) AND (TxoID >= id0)
 	void TxoSetValue(TxoID, const Blob&);
 
-	// reset cursor to zero. Keep all the data: local macroblocks, peers, bbs, dummy UTXOs
+	// reset cursor to zero. Keep all the data: local peers, bbs, dummy UTXOs
 	void ResetCursor();
 
 private:
