@@ -221,6 +221,7 @@ namespace beam { namespace wallet
         bool IsAcceptableMaxHeight() const;
 
         const std::vector<Coin>& GetCoins() const;
+        const std::vector<Coin::ID>& GetCoinIDs() const;
     private:
         BaseTransaction& m_Tx;
 
@@ -237,9 +238,10 @@ namespace beam { namespace wallet
         ECC::Scalar::Native m_Offset; // goes to offset
 
         std::vector<Coin> m_Coins;
+        std::vector<Coin::ID> m_CoinIDs;
 
         // peer values
-        ECC::Scalar::Native m_PartialSignature;
+        ECC::Scalar::Native m_PeerSignature;
         ECC::Point::Native m_PeerPublicNonce;
         ECC::Point::Native m_PeerPublicExcess;
         std::vector<Input::Ptr> m_PeerInputs;
@@ -250,7 +252,7 @@ namespace beam { namespace wallet
 
         // deduced values,
         TxKernel::Ptr m_Kernel;
-        ECC::Scalar::Native m_PeerSignature;
+        ECC::Scalar::Native m_PartialSignature;
         ECC::Hash::Value m_Message;
         ECC::Signature::MultiSig m_MultiSig;
     };

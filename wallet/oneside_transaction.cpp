@@ -44,13 +44,36 @@ namespace beam { namespace wallet {
     {
         bool isSender = GetMandatoryParameter<bool>(TxParameterID::IsSender);
 
-        AmountList amoutList;
-        if (!GetParameter(TxParameterID::AmountList, amoutList))
+        AmountList amountList;
+        if (!GetParameter(TxParameterID::AmountList, amountList))
         {
-            amoutList = AmountList{ GetMandatoryParameter<Amount>(TxParameterID::Amount) };
+            amountList = AmountList{ GetMandatoryParameter<Amount>(TxParameterID::Amount) };
         }
 
-        auto sharedBuilder = make_shared<TxBuilder>(*this, amoutList, GetMandatoryParameter<Amount>(TxParameterID::Fee));
+        if (!isSender)
+        {
+
+            wallet::TxBuilder receiverBuilder(*this, amountList, 0);
+
+            if (receiverBuilder.GenerateBlindingExcess())
+            {
+                for (const auto& amount : receiverBuilder.GetAmountList())
+                {
+                    receiverBuilder.GenerateNewCoin(amount, false);
+                }
+                receiverBuilder.CreateOutputs();
+                receiverBuilder.FinalizeOutputs();
+                receiverBuilder.CreateKernel();
+                receiverBuilder.SignPartial();
+                receiverBuilder.FinalizeSignature();
+                UpdateOnNextTip();
+                return;
+            }
+            //m_Gateway.ConfirmOutputs(receiverBuilder.GetCoinIDs());
+            return;
+        }
+
+        auto sharedBuilder = make_shared<TxBuilder>(*this, amountList, GetMandatoryParameter<Amount>(TxParameterID::Fee));
         TxBuilder& builder = *sharedBuilder;
 
         builder.GenerateBlindingExcess();
@@ -78,14 +101,14 @@ namespace beam { namespace wallet {
                 builder.AddChange();
             }
 
-            //if (isSelfTx || !isSender)
-            //{
-            //    // create receiver utxo
-            //    for (const auto& amount : builder.GetAmountList())
-            //    {
-            //        builder.GenerateNewCoin(amount, false);
-            //    }
-            //}
+            if (!isSender)
+            {
+                // create receiver utxo
+                for (const auto& amount : builder.GetAmountList())
+                {
+                    builder.GenerateNewCoin(amount, false);
+                }
+            }
 
             UpdateTxDescription(TxStatus::InProgress);
 
@@ -124,36 +147,6 @@ namespace beam { namespace wallet {
             OnFailed(TxFailureReason::MaxHeightIsUnacceptable, true);
             return;
         }
-        //if (!isSelfTx && !builder.GetPeerSignature())
-        //{
-        //    if (txState == State::Initial)
-        //    {
-        //        // invited participant
-        //        assert(!IsInitiator());
-
-        //        UpdateTxDescription(TxStatus::Registering);
-        //        ConfirmInvitation(builder, !hasPeersInputsAndOutputs);
-
-        //        uint32_t nVer = 0;
-        //        if (GetParameter(TxParameterID::PeerProtoVersion, nVer))
-        //        {
-        //            // for peers with new flow, we assume that after we have responded, we have to switch to the state of awaiting for proofs
-        //            SetParameter(TxParameterID::TransactionRegistered, true);
-
-        //            SetState(State::KernelConfirmation);
-        //            ConfirmKernel(builder.GetKernel());
-        //        }
-        //        else
-        //        {
-        //            SetState(State::InvitationConfirmation);
-        //        }
-        //        return;
-        //    }
-        //    if (IsInitiator())
-        //    {
-        //        return;
-        //    }
-        //}
 
         if (IsInitiator() && !builder.IsPeerSignatureValid())
         {
@@ -166,20 +159,6 @@ namespace beam { namespace wallet {
         bool isRegistered = false;
         if (!GetParameter(TxParameterID::TransactionRegistered, isRegistered))
         {
-            //if (!isSelfTx && (!hasPeersInputsAndOutputs || IsInitiator()))
-            //{
-            //    if (txState == State::Invitation)
-            //    {
-            //        UpdateTxDescription(TxStatus::Registering);
-            //        ConfirmTransaction(builder, !hasPeersInputsAndOutputs);
-            //        SetState(State::PeerConfirmation);
-            //    }
-            //    if (!hasPeersInputsAndOutputs)
-            //    {
-            //        return;
-            //    }
-            //}
-
             if (CheckExpired())
             {
                 return;
@@ -211,16 +190,6 @@ namespace beam { namespace wallet {
         GetParameter(TxParameterID::KernelProofHeight, hProof);
         if (!hProof)
         {
-            //if (txState == State::Registration)
-            //{
-            //    uint32_t nVer = 0;
-            //    if (!GetParameter(TxParameterID::PeerProtoVersion, nVer))
-            //    {
-            //        // notify old peer that transaction has been registered
-            //        NotifyTransactionRegistered();
-            //    }
-            //}
-            //SetState(State::KernelConfirmation);
             ConfirmKernel(builder.GetKernel());
             return;
         }

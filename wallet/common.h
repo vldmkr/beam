@@ -284,6 +284,7 @@ namespace beam
             SharedInputs = 181,
             LockedInputs = 182,
             
+            OutputIDs = 189,
             Outputs = 190,
             SharedOutputs = 191,
             LockedOutputs = 192,
@@ -357,6 +358,7 @@ namespace beam
             virtual bool get_tip(Block::SystemState::Full& state) const = 0;
             virtual void send_tx_params(const WalletID& peerID, SetTxParameter&&) = 0;
             virtual void UpdateOnNextTip(const TxID&) = 0;
+           // virtual void ConfirmOutputs(const std::vector<Coin::ID>&) = 0;
         };
 
         enum class ErrorType : uint8_t

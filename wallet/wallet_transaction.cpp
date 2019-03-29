@@ -822,6 +822,8 @@ namespace beam { namespace wallet
             blindingFactor = -blindingFactor;
             m_Offset += blindingFactor;
             m_Outputs.emplace_back(move(output));
+
+            m_CoinIDs.push_back(utxo.m_ID);
         }
     }
 
@@ -834,7 +836,9 @@ namespace beam { namespace wallet
     {
         m_Tx.SetParameter(TxParameterID::Outputs, m_Outputs, false);
         m_Tx.SetParameter(TxParameterID::Offset, m_Offset, false);
-        
+
+        m_Tx.SetParameter(TxParameterID::OutputIDs, m_CoinIDs, false);
+
         // TODO: check transaction size here
 
         return true;
@@ -944,6 +948,8 @@ namespace beam { namespace wallet
         m_Tx.GetParameter(TxParameterID::Lifetime, m_Lifetime);
         m_Tx.GetParameter(TxParameterID::PeerMaxHeight, m_PeerMaxHeight);
 
+        m_Tx.GetParameter(TxParameterID::OutputIDs, m_CoinIDs);
+
         return m_Tx.GetParameter(TxParameterID::Offset, m_Offset);
     }
 
@@ -979,8 +985,7 @@ namespace beam { namespace wallet
 
         m_Kernel->get_Hash(m_Message);
         m_MultiSig.m_NoncePub = GetPublicNonce() + m_PeerPublicNonce;
-        
-        
+
         m_MultiSig.SignPartial(m_PartialSignature, m_Message, m_BlindingExcess);
 
         StoreKernelID();
@@ -989,7 +994,7 @@ namespace beam { namespace wallet
     void TxBuilder::FinalizeSignature()
     {
         // final signature
-        m_Kernel->m_Signature.m_NoncePub = GetPublicNonce() + m_PeerPublicNonce;
+        m_Kernel->m_Signature.m_NoncePub = m_MultiSig.m_NoncePub;
         m_Kernel->m_Signature.m_k = m_PartialSignature + m_PeerSignature;
 
         StoreKernelID();
@@ -1156,5 +1161,10 @@ namespace beam { namespace wallet
     const std::vector<Coin>& TxBuilder::GetCoins() const
     {
         return m_Coins;
+    }
+
+    const std::vector<Coin::ID>& TxBuilder::GetCoinIDs() const
+    {
+        return m_CoinIDs;
     }
 }}

@@ -512,6 +512,34 @@ namespace
             return true;
         }
 
+        bool HasCommitment(const ECC::Point& c)
+        {
+            UtxoTree::Cursor cu;
+            //UtxoTree::MyLeaf* p;
+            UtxoTree::Key::Data d;
+            d.m_Commitment = c;
+
+            struct Traveler :public UtxoTree::ITraveler {
+                virtual bool OnLeaf(const RadixTree::Leaf& x) override {
+                    return false; // stop iteration
+                }
+            } t;
+
+
+            UtxoTree::Key kMin, kMax;
+
+            d.m_Maturity = 0;
+            kMin = d;
+            d.m_Maturity = m_mcm.m_vStates.back().m_Hdr.m_Height;
+            kMax = d;
+
+            t.m_pCu = &cu;
+            t.m_pBound[0] = kMin.m_pArr;
+            t.m_pBound[1] = kMax.m_pArr;
+
+            return !m_Utxos.Traverse(t);
+        }
+
 
         void GetProof(const proto::GetProofUtxo& data, proto::ProofUtxo& msgOut)
         {
@@ -1815,6 +1843,107 @@ namespace
         }
     }
 
+
+    class OneSideReceiver
+    {
+    public:
+        struct Cookie
+        {
+            Output::Ptr m_Output;
+            TxKernel::Ptr m_Kernel;
+        };
+
+        void GenerateOutputs(IWalletDB& db, const AmountList& amounts)
+        {
+            for (const auto& amount : amounts)
+            {
+                m_Outputs.push_back(CreateOutput(db, amount));
+            }
+        }
+
+
+        std::vector<Cookie> GenerateCookies(IWalletDB& db, const AmountList& amounts, Height minHeight, Height maxHeight)
+        {
+            std::vector<Cookie> res;
+            res.reserve(amounts.size());
+            for (const auto& amount : amounts)
+            {
+                // create output
+                Coin newUtxo(amount);
+                db.store(newUtxo);
+
+                Scalar::Native blindingFactor;
+                Output::Ptr output = make_unique<Output>();
+                output->Create(blindingFactor, *db.get_ChildKdf(newUtxo.m_ID.m_SubIdx), newUtxo.m_ID, *db.get_MasterKdf());
+
+                Scalar::Native m_BlindingExcess = -blindingFactor;
+
+                // kernel
+                auto kernel = make_unique<TxKernel>();
+                kernel->m_Fee = 0UL;
+                kernel->m_Height.m_Min = minHeight;
+                kernel->m_Height.m_Max = maxHeight;
+                kernel->m_Commitment = Context::get().G * m_BlindingExcess;
+
+                // create signature
+                Merkle::Hash m_Message;
+                kernel->get_Hash(m_Message);
+
+                ECC::Signature::MultiSig m_MultiSig;
+
+                NoLeak<Hash::Value> hvRandom;
+                ECC::GenRandom(hvRandom.V);
+                db.get_MasterKdf()->DeriveKey(m_MultiSig.m_Nonce, hvRandom.V);
+
+                m_MultiSig.m_NoncePub = Context::get().G * m_MultiSig.m_Nonce; 
+
+                ECC::Scalar::Native m_PartialSignature;
+                m_MultiSig.SignPartial(m_PartialSignature, m_Message, m_BlindingExcess);
+
+                kernel->m_Signature.m_NoncePub = m_MultiSig.m_NoncePub;
+                kernel->m_Signature.m_k = m_PartialSignature;
+
+                Cookie& c = res.emplace_back();
+                c.m_Kernel = move(kernel);
+                c.m_Output = move(output);
+            }
+            return res;
+        }
+
+        Output::Ptr CreateOutput(IWalletDB& db, Amount amount)
+        {
+            Coin newUtxo(amount);
+            db.store(newUtxo);
+
+            Scalar::Native blindingFactor;
+            Output::Ptr output = make_unique<Output>();
+            output->Create(blindingFactor, *db.get_ChildKdf(newUtxo.m_ID.m_SubIdx), newUtxo.m_ID, *db.get_MasterKdf());
+
+            return output;
+        }
+
+        TxKernel::Ptr CreateKernel(Output::Ptr, Height minHeight, Height maxHeight)
+        {
+            auto kernel = make_unique<TxKernel>();
+            kernel->m_Fee = 0UL;
+            kernel->m_Height.m_Min = minHeight;
+            kernel->m_Height.m_Max = maxHeight;
+            kernel->m_Commitment = Zero;
+        }
+
+    private:
+        std::vector<Output::Ptr> m_Outputs;
+    };
+
+    template <typename T>
+    void PushVectorPtr(std::vector<typename T::Ptr>& vec, const T& val)
+    {
+        vec.resize(vec.size() + 1);
+        typename T::Ptr& p = vec.back();
+        p.reset(new T);
+        *p = val;
+    }
+
     void TestOneSideTransaction()
     {
         cout << "\nTesting one side tx performance...\n";
@@ -1840,73 +1969,81 @@ namespace
         sender.m_Wallet.RegisterTransactionType(wallet::TxType::OneSide, wallet::OneSideTransaction::Create);
         receiver.m_Wallet.RegisterTransactionType(wallet::TxType::OneSide, wallet::OneSideTransaction::Create);
 
+        OneSideReceiver oneSideReceiver;
+        {
+            auto cookies = oneSideReceiver.GenerateCookies(*receiver.m_WalletDB, { 1UL, 3UL }, 0, 400);
+            vector<TxKernel::Ptr> kernels;
+            vector<Output::Ptr> outputs;
+            for (auto& c : cookies)
+            {
+                kernels.push_back(move(c.m_Kernel));
+                outputs.push_back(move(c.m_Output));
+            }
 
-        TxID receiverTxID = wallet::GenerateTxID();
-        auto receiverTx = wallet::OneSideTransaction::Create(receiver.m_Wallet, receiver.m_WalletDB, receiverTxID);
-        shared_ptr<wallet::OneSideTransaction> oneSideTx = static_pointer_cast<wallet::OneSideTransaction>(receiverTx);
+            for (const auto& output : outputs)
+            {
+                Point commitment = output->m_Commitment;
+                WALLET_CHECK(!node.m_Blockchain.HasCommitment(commitment));
+            }
 
-        oneSideTx->SetParameter(wallet::TxParameterID::IsSender, false);
-        //receiver.m_Wallet.ProcessTransaction(receiverTx);
+            sort(kernels.begin(), kernels.end());
+
+            auto tx = sender.m_Wallet.CreateNewTransaction(sender.m_WalletID, receiver.m_WalletID, AmountList{ 4 }, 1, {}, true, wallet::TxType::OneSide);
+
+            tx->SetParameter(wallet::TxParameterID::PeerKernels, kernels);
+            tx->SetParameter(wallet::TxParameterID::PeerOutputs, outputs);
+            Scalar::Native offset = Zero;
+            tx->SetParameter(wallet::TxParameterID::PeerOffset, offset);
+            sender.m_Wallet.ProcessTransaction(tx);
+            mainReactor->run();
+
+            //auto receiverCoins = receiver.GetCoins();
+            //WALLET_CHECK(receiverCoins.size() == 2);
+
+            for (const auto& output : outputs)
+            {
+                Point commitment = output->m_Commitment;
+                WALLET_CHECK(node.m_Blockchain.HasCommitment(commitment));
+            }
+        }
+        {
+            auto cookies = oneSideReceiver.GenerateCookies(*receiver.m_WalletDB, { 1UL }, 0, 400);
+            WALLET_CHECK(cookies.size() == 1);
+            
+            vector<TxKernel::Ptr> kernels;
+            vector<Output::Ptr> outputs;
+            
+            for (int i = 0; i < 5; ++i)
+            {
+                PushVectorPtr(kernels, *cookies[0].m_Kernel);
+                PushVectorPtr(outputs, *cookies[0].m_Output);
+            }
+            
+            auto tx = sender.m_Wallet.CreateNewTransaction(sender.m_WalletID, receiver.m_WalletID, AmountList{ 5 }, 0, {}, true, wallet::TxType::OneSide);
+
+            tx->SetParameter(wallet::TxParameterID::PeerKernels, kernels);
+            tx->SetParameter(wallet::TxParameterID::PeerOutputs, outputs);
+            Scalar::Native offset = Zero;
+            tx->SetParameter(wallet::TxParameterID::PeerOffset, offset);
+            sender.m_Wallet.ProcessTransaction(tx);
+            mainReactor->run();
+
+            
+            Point commitment = cookies[0].m_Output->m_Commitment;
+            proto::GetProofUtxo msg;
+            msg.m_Utxo = commitment;
+            msg.m_MaturityMin = 0;
+            proto::ProofUtxo response;
+            node.m_Blockchain.GetProof(msg, response);
+            WALLET_CHECK(response.m_Proofs.size() == 1);
+            const auto& proof = response.m_Proofs[0];
+            WALLET_CHECK(proof.m_State.m_Maturity == 146);
+            WALLET_CHECK(proof.m_State.m_Count == 5);
         
-        wallet::TxBuilder receiverBuilder(*oneSideTx, AmountList{ 4 }, 2);
-
-        receiverBuilder.GenerateBlindingExcess();
-        receiverBuilder.AddOutput(1, false);
-        receiverBuilder.AddOutput(3, false);
-        receiverBuilder.FinalizeOutputs();
-        receiverBuilder.CreateKernel();
-        receiverBuilder.SignPartial();
-        receiverBuilder.FinalizeSignature();
-
-        vector<TxKernel::Ptr> kernels;
-        kernels.push_back(receiverBuilder.MoveKernel());
-        const auto& outputs = receiverBuilder.GetOutputs();
-
-        //oneSideTx->SetParameter(wallet::TxParameterID::PeerKernels, kernels);
-        //oneSideTx->SetParameter(wallet::TxParameterID::PeerOutputs, outputs);
-        //oneSideTx->SetParameter(wallet::TxParameterID::PeerOffset, receiverBuilder.GetOffset());
-
-        {
-            auto tx = sender.m_Wallet.CreateNewTransaction(sender.m_WalletID, receiver.m_WalletID, AmountList{ 4 }, 1, {}, true, wallet::TxType::OneSide);
-            WALLET_CHECK(tx->GetTxID() != receiverTxID);
-            tx->SetParameter(wallet::TxParameterID::PeerKernels, kernels);
-            tx->SetParameter(wallet::TxParameterID::PeerOutputs, outputs);
-            tx->SetParameter(wallet::TxParameterID::PeerOffset, receiverBuilder.GetOffset());
-            sender.m_Wallet.ProcessTransaction(tx);
-            mainReactor->run();
-
-            auto receiverCoins = receiver.GetCoins();
-            WALLET_CHECK(receiverCoins.size() == 0);
-        }
-        {
-            receiver.m_Wallet.ProcessTransaction(receiverTx);
-
-            mainReactor->run();
-
-            auto receiverCoins = receiver.GetCoins();
-            WALLET_CHECK(receiverCoins.size() == 2);
+            //auto receiverCoins = receiver.GetCoins();
+            //WALLET_CHECK(receiverCoins.size() == 2);
         }
 
-        {
-            auto tx = sender.m_Wallet.CreateNewTransaction(sender.m_WalletID, receiver.m_WalletID, AmountList{ 4 }, 1, {}, true, wallet::TxType::OneSide);
-            WALLET_CHECK(tx->GetTxID() != receiverTxID);
-            tx->SetParameter(wallet::TxParameterID::PeerKernels, kernels);
-            tx->SetParameter(wallet::TxParameterID::PeerOutputs, outputs);
-            tx->SetParameter(wallet::TxParameterID::PeerOffset, receiverBuilder.GetOffset());
-            sender.m_Wallet.ProcessTransaction(tx);
-            mainReactor->run();
-
-            auto receiverCoins = receiver.GetCoins();
-            WALLET_CHECK(receiverCoins.size() == 2);
-        }
-        {
-            receiver.m_Wallet.ProcessTransaction(receiverTx);
-
-            mainReactor->run();
-
-            auto receiverCoins = receiver.GetCoins();
-            WALLET_CHECK(receiverCoins.size() == 4);
-        }
     }
 }
 

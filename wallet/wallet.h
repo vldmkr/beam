@@ -102,6 +102,7 @@ namespace beam
         void send_tx_params(const WalletID& peerID, wallet::SetTxParameter&&) override;
         void register_tx(const TxID& txId, Transaction::Ptr) override;
         void UpdateOnNextTip(const TxID&) override;
+        //void ConfirmOutputs(const std::vector<Coin::ID>&) override;
 
         void OnWalletMessage(const WalletID& peerID, wallet::SetTxParameter&&) override;
 
@@ -125,7 +126,7 @@ namespace beam
         void getUtxoProof(const Coin::ID&);
         void report_sync_progress();
         void notifySyncProgress();
-        void updateTransaction(const TxID& txID);
+        void UpdateTransaction(const TxID& txID);
         void UpdateOnSynced(wallet::BaseTransaction::Ptr tx);
         void UpdateOnNextTip(wallet::BaseTransaction::Ptr tx);
         void saveKnownState();

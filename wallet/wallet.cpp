@@ -237,7 +237,7 @@ namespace beam
     {
         auto txID = tx->GetTxID();
         m_Transactions.emplace(txID, tx);
-        updateTransaction(txID);
+        UpdateTransaction(txID);
     }
 
     void Wallet::RegisterTransactionType(TxType type, BaseTransaction::Creator creator)
@@ -314,9 +314,17 @@ namespace beam
 
     void Wallet::confirm_outputs(const vector<Coin>& coins)
     {
-        for (auto& coin : coins)
+        for (const auto& coin : coins)
             getUtxoProof(coin.m_ID);
     }
+
+    //void Wallet::ConfirmOutputs(const std::vector<Coin::ID>& ids)
+    //{
+    //    for (const auto& id : ids)
+    //    {
+    //        getUtxoProof(id);
+    //    }
+    //}
 
     bool Wallet::MyRequestUtxo::operator < (const MyRequestUtxo& x) const
     {
@@ -417,7 +425,7 @@ namespace beam
         }
         if (txChanged)
         {
-            updateTransaction(msg.m_TxID);
+            UpdateTransaction(msg.m_TxID);
         }
     }
 
@@ -429,7 +437,7 @@ namespace beam
         if (it != m_Transactions.end())
         {
             it->second->SetParameter(TxParameterID::TransactionRegistered, r.m_Res.m_Value);
-            updateTransaction(r.m_TxID);
+            UpdateTransaction(r.m_TxID);
         }
     }
 
@@ -460,7 +468,7 @@ namespace beam
         }
     }
 
-    void Wallet::updateTransaction(const TxID& txID)
+    void Wallet::UpdateTransaction(const TxID& txID)
     {
         auto it = m_Transactions.find(txID);
         if (it != m_Transactions.end())
