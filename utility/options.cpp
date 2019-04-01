@@ -58,8 +58,10 @@ namespace beam
         const char* EXPORT_MINER_KEY = "export_miner_key";
         const char* EXPORT_OWNER_KEY = "export_owner_key";
         const char* KEY_SUBKEY = "subkey";
-        const char* KEY_OWNER = "key_owner";
-        const char* KEY_MINE= "key_mine";
+        const char* KEY_OWNER = "key_owner";  // deprecated
+        const char* OWNER_KEY = "owner_key";
+        const char* KEY_MINE = "key_mine"; // deprecated
+        const char* MINER_KEY = "miner_key";
         const char* BBS_ENABLE = "bbs_enable";
         const char* NEW_ADDRESS = "new_addr";
         const char* NEW_ADDRESS_COMMENT = "comment";
@@ -157,8 +159,10 @@ namespace beam
 			(cli::CHECKDB, po::value<bool>()->default_value(false), "DB integrity check and compact (vacuum)")
             (cli::BBS_ENABLE, po::value<bool>()->default_value(true), "Enable SBBS messaging")
             (cli::CRASH, po::value<int>()->default_value(0), "Induce crash (test proper handling)")
-            (cli::KEY_OWNER, po::value<string>(), "Owner viewer key")
-            (cli::KEY_MINE, po::value<string>(), "Standalone miner key")
+            (cli::OWNER_KEY, po::value<string>(), "Owner viewer key")
+            (cli::KEY_OWNER, po::value<string>(), "Owner viewer key (deprecated)")
+            (cli::MINER_KEY, po::value<string>(), "Standalone miner key")
+            (cli::KEY_MINE, po::value<string>(), "Standalone miner key (deprecated)")
             (cli::PASS, po::value<string>(), "password for keys")
 			(cli::LOG_UTXOS, po::value<bool>()->default_value(false), "Log recovered UTXOs (make sure the log file is not exposed)")
 			(cli::HORIZON_HI, po::value<Height>()->default_value(MaxHeight), "spent TXO Hi-Horizon")
@@ -190,7 +194,7 @@ namespace beam
 			(cli::PAYMENT_PROOF_REQUIRED, po::value<bool>(), "Set to disallow outgoing payments if the receiver doesn't supports the payment proof (older wallets)")
             (cli::UTXO, po::value<vector<string>>()->multitoken(), "preselected utxos to transfer")
             (cli::IMPORT_EXPORT_PATH, po::value<string>()->default_value("addresses.dat"), "path to import or export data (import_addresses|export_addresses)")
-            (cli::COMMAND, po::value<string>(), "command to execute [new_addr|send|receive|listen|init|restore|info|export_miner_key|export_owner_key|generate_phrase|change_address_expiration|address_list|rescan|export_addresses|import_addresses]");
+            (cli::COMMAND, po::value<string>(), "command to execute [new_addr|send|receive|listen|init|restore|info|export_miner_key|export_owner_key|generate_phrase|change_address_expiration|address_list|rescan|export_addresses|import_addresses|payment_proof_export|payment_proof_verify|utxo]");
 
         po::options_description wallet_treasury_options("Wallet treasury options");
         wallet_treasury_options.add_options()
@@ -272,6 +276,7 @@ namespace beam
         po::positional_options_description positional;
         po::command_line_parser parser(argc, argv);
         parser.options(options);
+        parser.style(po::command_line_style::default_style ^ po::command_line_style::allow_guessing);
         if (walletOptions)
         {
             positional.add(cli::COMMAND, 1);

@@ -79,25 +79,12 @@ void Node::UpdateSyncStatus()
 
 void Node::UpdateSyncStatusRaw()
 {
-	Height hToCursor = m_Processor.m_Cursor.m_ID.m_Height * (SyncStatus::s_WeightHdr + SyncStatus::s_WeightBlock);
-	m_SyncStatus.m_Total = hToCursor;
-	m_SyncStatus.m_Done = hToCursor;
+	Height hTotal = m_Processor.m_Cursor.m_ID.m_Height;
+	Height hDoneBlocks = hTotal;
+	Height hDoneHdrs = hTotal;
 
 	if (m_Processor.IsFastSync())
-	{
-		m_SyncStatus.m_Total += (m_Processor.m_SyncData.m_Target.m_Height - m_Processor.m_Cursor.m_ID.m_Height) * (SyncStatus::s_WeightHdr + SyncStatus::s_WeightBlock);
-		m_SyncStatus.m_Done += (m_Processor.m_SyncData.m_Target.m_Height - m_Processor.m_Cursor.m_ID.m_Height) * SyncStatus::s_WeightHdr;
-
-		TaskSet::iterator it = m_setTasks.begin();
-		if (m_setTasks.end() != it)
-		{
-			const Block::SystemState::ID& id = it->m_Key.first;
-			if (id.m_Height > m_Processor.m_Cursor.m_ID.m_Height)
-				m_SyncStatus.m_Done += (id.m_Height - m_Processor.m_Cursor.m_ID.m_Height) * SyncStatus::s_WeightBlock;
-		}
-	}
-
-	bool bOnlyAssigned = (m_Processor.m_Cursor.m_ID.m_Height > 0);
+		hTotal = m_Processor.m_SyncData.m_Target.m_Height;
 
 	for (TaskSet::iterator it = m_setTasks.begin(); m_setTasks.end() != it; it++)
 	{
@@ -107,35 +94,46 @@ void Node::UpdateSyncStatusRaw()
 		if (m_Processor.m_Cursor.m_ID.m_Height >= t.m_sidTrg.m_Height)
 			continue;
 
-		if (bOnlyAssigned && !t.m_pOwner)
-			continue;
-
-		Height hVal = t.m_sidTrg.m_Height * (SyncStatus::s_WeightHdr + SyncStatus::s_WeightBlock);
-		m_SyncStatus.m_Total = std::max(m_SyncStatus.m_Total, hVal);
-
-		Height h = t.m_Key.first.m_Height;
-		if (h > t.m_sidTrg.m_Height)
-			continue; // ?!
-
 		bool bBlock = t.m_Key.second;
-		// If the request is the block - assume all the headers are received, as well as all the blocks up to cursor
-		// If the request is the header - assume headers are requested in reverse order, up to current cursor (which isn't true in case of fork, but it's a coarse estimate)
 		if (bBlock)
-			h = m_Processor.m_Cursor.m_ID.m_Height; // the height down to which all the headers are already downloaded
+		{
+			assert(t.m_Key.first.m_Height);
+			// all the blocks up to this had been dloaded
+			hTotal = std::max(hTotal, t.m_sidTrg.m_Height);
+			hDoneHdrs = std::max(hDoneHdrs, t.m_sidTrg.m_Height);
+			hDoneBlocks = std::max(hDoneBlocks, t.m_Key.first.m_Height - 1);
+		}
 		else
-			if (h)
-				h--;
+		{
+			if (!t.m_pOwner)
+				continue; // don't account for unowned
 
-		hVal = hToCursor + (t.m_sidTrg.m_Height - h) * SyncStatus::s_WeightHdr;
-		m_SyncStatus.m_Done = std::max(m_SyncStatus.m_Done, hVal);
+			hTotal = std::max(hTotal, t.m_sidTrg.m_Height);
+			if (t.m_sidTrg.m_Height > t.m_Key.first.m_Height)
+				hDoneHdrs = std::max(hDoneHdrs, m_Processor.m_Cursor.m_ID.m_Height + t.m_sidTrg.m_Height - t.m_Key.first.m_Height);
+		}
 	}
 
-	m_SyncStatus.m_Total = std::max(m_SyncStatus.m_Total, m_SyncStatus.m_Done);
+	// account for treasury
+	hTotal++;
+
+	if (m_Processor.IsTreasuryHandled())
+	{
+		hDoneBlocks++;
+		hDoneHdrs++;
+	}
+
+	// corrections
+	hDoneHdrs = std::max(hDoneHdrs, hDoneBlocks);
+	hTotal = std::max(hTotal, hDoneHdrs);
+
+	m_SyncStatus.m_Total = hTotal * (SyncStatus::s_WeightHdr + SyncStatus::s_WeightBlock);
+	m_SyncStatus.m_Done = hDoneHdrs * SyncStatus::s_WeightHdr + hDoneBlocks * SyncStatus::s_WeightBlock;
 }
 
 void Node::DeleteUnassignedTask(Task& t)
 {
-    assert(!t.m_pOwner && !t.m_bPack);
+    assert(!t.m_pOwner && !t.m_nCount);
     m_lstTasksUnassigned.erase(TaskList::s_iterator_to(t));
     m_setTasks.erase(TaskSet::s_iterator_to(t));
     delete &t;
@@ -313,10 +311,6 @@ bool Node::TryAssignTask(Task& t, Peer& p, bool bMustSupportLatestProto)
 
 bool Node::TryAssignTask(Task& t, Peer& p)
 {
-	uint32_t nPacks = t.m_Key.second ? m_nTasksPackBody : m_nTasksPackHdr;
-	if (nPacks)
-		return false;
-
     if (!p.ShouldAssignTasks())
         return false;
 
@@ -353,7 +347,8 @@ bool Node::TryAssignTask(Task& t, Peer& p)
     // assign
     if (t.m_Key.second)
     {
-		assert(!m_nTasksPackBody);
+		if (m_nTasksPackBody >= m_Cfg.m_MaxConcurrentBlocksRequest)
+			return false; // too many blocks requested
 
 		Height hCountExtra = t.m_sidTrg.m_Height - t.m_Key.first.m_Height;
 
@@ -385,8 +380,8 @@ bool Node::TryAssignTask(Task& t, Peer& p)
 
 			p.Send(msg);
 
-			t.m_bPack = true;
-			m_nTasksPackBody++;
+			t.m_nCount = std::min(static_cast<uint32_t>(msg.m_CountExtra), m_Cfg.m_BandwidthCtl.m_MaxBodyPackCount) + 1; // just an estimate, the actual num of blocks can be smaller
+			m_nTasksPackBody += t.m_nCount;
 		}
 		else
 		{
@@ -423,7 +418,8 @@ bool Node::TryAssignTask(Task& t, Peer& p)
 
 				pTask->m_sidTrg = t.m_sidTrg;
 				pTask->m_bNeeded = false;
-				pTask->m_bPack = false;
+				pTask->m_nCount = 1;
+				m_nTasksPackBody++;
 
 				t.m_Key.first.m_Height++;
 				uint64_t rowid = pPtr[t.m_sidTrg.m_Height - t.m_Key.first.m_Height];
@@ -437,42 +433,33 @@ bool Node::TryAssignTask(Task& t, Peer& p)
     }
     else
     {
-		assert(!m_nTasksPackHdr);
+		if (m_nTasksPackHdr >= proto::g_HdrPackMaxSize)
+			return false; // too many hdrs requested
 
         if (nBlocks)
             return false; // don't requests headers from the peer that transfers a block
 
-		uint32_t nPackSize = 0;
-		if (t.m_Key.first.m_Height > m_Processor.m_Cursor.m_ID.m_Height)
-		{
-			Height dh = t.m_Key.first.m_Height - m_Processor.m_Cursor.m_ID.m_Height;
-			if (dh > 1)
-			{
-				nPackSize = (proto::LoginFlags::Extension2 & p.m_LoginFlags) ?
-					proto::g_HdrPackMaxSize :
-					proto::g_HdrPackMaxSizeV0;
+		uint32_t nPackSize = (proto::LoginFlags::Extension2 & p.m_LoginFlags) ?
+			proto::g_HdrPackMaxSize :
+			proto::g_HdrPackMaxSizeV0;
 
-				if (nPackSize > dh)
-					nPackSize = (uint32_t)dh;
-			}
-		}
+		// make sure we're not dealing with overlaps
+		Height h0 = m_Processor.get_DB().get_HeightBelow(t.m_Key.first.m_Height);
+		assert(h0 < t.m_Key.first.m_Height);
+		Height dh = t.m_Key.first.m_Height - h0;
 
-        if (nPackSize)
-        {
-            proto::GetHdrPack msg;
-            msg.m_Top = t.m_Key.first;
-            msg.m_Count = nPackSize;
-            p.Send(msg);
+		if (nPackSize > dh)
+			nPackSize = (uint32_t) dh;
 
-            t.m_bPack = true;
-            m_nTasksPackHdr++;
-        }
-        else
-        {
-            proto::GetHdr msg;
-            msg.m_ID = t.m_Key.first;
-            p.Send(msg);
-        }
+		nPackSize = std::min(nPackSize, proto::g_HdrPackMaxSize - m_nTasksPackHdr);
+
+        proto::GetHdrPack msg;
+        msg.m_Top = t.m_Key.first;
+        msg.m_Count = nPackSize;
+        p.Send(msg);
+
+        t.m_nCount = nPackSize;
+        m_nTasksPackHdr += nPackSize;
     }
 
     bool bEmpty = p.m_lstTasks.empty();
@@ -512,7 +499,7 @@ void Node::Processor::RequestData(const Block::SystemState::ID& id, bool bBlock,
         pTask->m_Key = tKey.m_Key;
         pTask->m_sidTrg = sidTrg;
 		pTask->m_bNeeded = true;
-        pTask->m_bPack = false;
+        pTask->m_nCount = 0;
         pTask->m_pOwner = NULL;
 
         get_ParentObj().m_setTasks.insert(*pTask);
@@ -525,8 +512,14 @@ void Node::Processor::RequestData(const Block::SystemState::ID& id, bool bBlock,
 	{
 		Node::Task& t = *it;
 		t.m_bNeeded = true;
-		if (!t.m_pOwner && (t.m_sidTrg.m_Height < sidTrg.m_Height))
-			t.m_sidTrg = sidTrg;
+
+		if (!t.m_pOwner)
+		{
+			if (t.m_sidTrg.m_Height < sidTrg.m_Height)
+				t.m_sidTrg = sidTrg;
+
+			get_ParentObj().TryAssignTask(t, pPreferredPeer);
+		}
 	}
 }
 
@@ -626,7 +619,13 @@ void Node::Processor::OnRolledBack()
 
 uint32_t Node::Processor::TaskProcessor::get_Threads()
 {
-	uint32_t nThreads = get_ParentObj().get_ParentObj().m_Cfg.m_VerificationThreads;
+	Config& cfg = get_ParentObj().get_ParentObj().m_Cfg; // alias
+
+	if (cfg.m_VerificationThreads < 0)
+		// use all the cores, don't subtract 'mining threads'. Verification has higher priority
+		cfg.m_VerificationThreads = std::thread::hardware_concurrency();
+
+	uint32_t nThreads = cfg.m_VerificationThreads;
 	return std::max(nThreads, 1U);
 }
 
@@ -825,11 +824,6 @@ bool Node::Processor::EnumViewerKeys(IKeyWalker& w)
 		return false;
 	}
 
-	if (keys.m_bRecoverViaDummyKey && !w.OnKey(*keys.m_pOwner, 1)) {
-		// stupid compiler insists on parentheses here!
-		return false;
-	}
-
     return true;
 }
 
@@ -909,7 +903,6 @@ void Node::Keys::SetSingleKey(const Key::IKdf::Ptr& pKdf)
     m_nMinerSubIndex = 0;
     m_pMiner = pKdf;
     m_pGeneric = pKdf;
-    m_pDummy = pKdf;
     m_pOwner = pKdf;
 }
 
@@ -917,10 +910,6 @@ void Node::Initialize(IExternalPOW* externalPOW)
 {
     m_Processor.m_Horizon = m_Cfg.m_Horizon;
     m_Processor.Initialize(m_Cfg.m_sPathLocal.c_str(), m_Cfg.m_ProcessorParams);
-
-    if (m_Cfg.m_VerificationThreads < 0)
-        // use all the cores, don't subtract 'mining threads'. Verification has higher priority
-        m_Cfg.m_VerificationThreads = std::thread::hardware_concurrency();
 
     InitKeys();
     InitIDs();
@@ -991,29 +980,11 @@ void Node::InitIDs()
         m_MyPrivateID = s.V;
 
     proto::Sk2Pk(m_MyPublicID, m_MyPrivateID);
-
-    if (!m_Keys.m_pDummy)
-    {
-        // create it using Node-ID
-        ECC::NoLeak<ECC::Hash::Value> hv;
-        ECC::Hash::Processor() << m_MyPrivateID >> hv.V;
-
-        std::shared_ptr<ECC::HKdf> pKdf = std::make_shared<ECC::HKdf>();
-        pKdf->Generate(hv.V);
-        m_Keys.m_pDummy = std::move(pKdf);
-    }
-
 }
 
 void Node::RefreshOwnedUtxos()
 {
 	ECC::Hash::Processor hp;
-	if (m_Keys.m_pDummy)
-	{
-		ECC::Scalar::Native sk;
-		m_Keys.m_pDummy->DeriveKey(sk, Key::ID(0, Key::Type::Decoy));
-		hp << sk;
-	}
 
 	if (m_Keys.m_pOwner)
 	{
@@ -1032,11 +1003,7 @@ void Node::RefreshOwnedUtxos()
 	if (hv0 == hv1)
 		return; // unchaged
 
-	if (m_Keys.m_pDummy && !(m_Keys.m_pOwner && m_Keys.m_pOwner->IsSame(*m_Keys.m_pDummy)))
-		m_Keys.m_bRecoverViaDummyKey = true;
-
 	m_Processor.RescanOwnedTxos();
-	m_Keys.m_bRecoverViaDummyKey = false;
 
 	blob = Blob(hv0);
 	m_Processor.get_DB().ParamSet(NodeDB::ParamID::DummyID, NULL, &blob);
@@ -1385,13 +1352,13 @@ void Node::Peer::ReleaseTask(Task& t)
     assert(this == t.m_pOwner);
     t.m_pOwner = NULL;
 
-    if (t.m_bPack)
+    if (t.m_nCount)
     {
         uint32_t& nCounter = t.m_Key.second ? m_This.m_nTasksPackBody : m_This.m_nTasksPackHdr;
-        assert(nCounter);
+        assert(nCounter >= t.m_nCount);
 
-        nCounter--;
-        t.m_bPack = false;
+        nCounter -= t.m_nCount;
+		t.m_nCount = 0;
     }
 
     m_lstTasks.erase(TaskList::s_iterator_to(t));
@@ -1562,7 +1529,9 @@ void Node::Peer::OnFirstTaskDone()
     ReleaseTask(get_FirstTask());
     SetTimerWrtFirstTask();
 
-    TakeTasks(); // maybe can take more
+	// Refrain from using TakeTasks(), it will only try to assign tasks to this peer
+	m_This.RefreshCongestions();
+	m_This.m_Processor.TryGoUpAsync();
 }
 
 void Node::Peer::OnMsg(proto::DataMissing&&)
@@ -1592,7 +1561,7 @@ void Node::Peer::OnMsg(proto::Hdr&& msg)
 {
     Task& t = get_FirstTask();
 
-    if (t.m_Key.second || t.m_bPack)
+    if (t.m_Key.second || (t.m_nCount != 1))
         ThrowUnexpected();
 
     Block::SystemState::ID id;
@@ -1649,7 +1618,7 @@ void Node::Peer::OnMsg(proto::HdrPack&& msg)
 {
     Task& t = get_FirstTask();
 
-    if (t.m_Key.second || !t.m_bPack)
+    if (t.m_Key.second || !t.m_nCount)
         ThrowUnexpected();
 
     if (msg.m_vElements.empty() || (msg.m_vElements.size() > proto::g_HdrPackMaxSize))
@@ -1700,8 +1669,6 @@ void Node::Peer::OnMsg(proto::HdrPack&& msg)
     {
         assert((Flags::PiRcvd & m_Flags) && m_pInfo);
         m_This.m_PeerMan.ModifyRating(*m_pInfo, PeerMan::Rating::RewardHeader * nAccepted, true);
-
-        m_This.RefreshCongestions(); // may delete us
     }
     else
     {
@@ -1828,7 +1795,7 @@ void Node::Peer::OnMsg(proto::BodyPack&& msg)
 {
 	Task& t = get_FirstTask();
 
-	if (!t.m_Key.second || !t.m_bPack)
+	if (!t.m_Key.second || !t.m_nCount)
 		ThrowUnexpected();
 
 	const Block::SystemState::ID& id = t.m_Key.first;
@@ -1882,9 +1849,6 @@ void Node::Peer::OnFirstTaskDone(NodeProcessor::DataStatus::Enum eStatus)
 
     get_FirstTask().m_bNeeded = false;
     OnFirstTaskDone();
-
-    if (NodeProcessor::DataStatus::Accepted == eStatus)
-        m_This.RefreshCongestions();
 }
 
 void Node::Peer::OnMsg(proto::NewTransaction&& msg)
@@ -2053,7 +2017,7 @@ bool Node::OnTransactionStem(Transaction::Ptr&& ptx, const Peer* pPeer)
 
     assert(!pDup->m_bAggregating);
 
-    if (pDup->m_pValue->m_vOutputs.size() > m_Cfg.m_Dandelion.m_OutputsMax)
+    if ((pDup->m_pValue->m_vOutputs.size() >= m_Cfg.m_Dandelion.m_OutputsMax) || !m_Keys.m_pMiner)
         OnTransactionAggregated(*pDup);
     else
     {
@@ -2152,6 +2116,9 @@ void Node::PerformAggregation(TxPool::Stem::Element& x)
 
 void Node::AddDummyInputs(Transaction& tx)
 {
+	if (!m_Keys.m_pMiner)
+		return;
+
     bool bModified = false;
 
     while (tx.m_vInputs.size() < m_Cfg.m_Dandelion.m_OutputsMax)
@@ -2172,7 +2139,7 @@ void Node::AddDummyInputs(Transaction& tx)
         UtxoTree::Key kMin, kMax;
 
         UtxoTree::Key::Data d;
-        SwitchCommitment().Create(sk, d.m_Commitment, *m_Keys.m_pDummy, kidv);
+        SwitchCommitment().Create(sk, d.m_Commitment, *m_Keys.m_pMiner, kidv);
         d.m_Maturity = 0;
         kMin = d;
 
@@ -2220,7 +2187,7 @@ void Node::AddDummyInputs(Transaction& tx)
 
 void Node::AddDummyOutputs(Transaction& tx)
 {
-    if (!m_Cfg.m_Dandelion.m_DummyLifetimeHi)
+    if (!m_Cfg.m_Dandelion.m_DummyLifetimeHi || !m_Keys.m_pMiner)
         return;
 
     // add dummy outputs
@@ -2244,7 +2211,7 @@ void Node::AddDummyOutputs(Transaction& tx)
 
         Output::Ptr pOutput(new Output);
         ECC::Scalar::Native sk;
-        pOutput->Create(sk, *m_Keys.m_pDummy, kidv, *m_Keys.m_pDummy);
+        pOutput->Create(sk, *m_Keys.m_pMiner, kidv, *m_Keys.m_pOwner);
 
 		Height h = SampleDummySpentHeight();
         db.InsertDummy(h, kidv);

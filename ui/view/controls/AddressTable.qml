@@ -44,7 +44,7 @@ CustomTableView {
                     elide: Text.ElideMiddle
                     anchors.verticalCenter: parent.verticalCenter
                     text: styleData.value
-                    color: Style.white
+                    color: Style.content_main
                     copyMenuEnabled: true
                     onCopyText: parentModel.copyToClipboard(text)
                 }
@@ -95,8 +95,20 @@ CustomTableView {
         Rectangle {
             anchors.fill: parent
 
-            color: styleData.selected ? Style.bright_sky_blue : Style.light_navy
+            color: styleData.selected ? Style.content_accent_third : Style.background_third
             visible: styleData.selected ? true : styleData.alternate
+        }
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.RightButton
+            onClicked: {
+                if (mouse.button == Qt.RightButton && styleData.row != undefined)
+                {
+                    contextMenu.address = rootControl.model[styleData.row].address;
+                    contextMenu.addressItem = rootControl.model[styleData.row];
+                    contextMenu.popup();
+                }
+            }
         }
     }
 

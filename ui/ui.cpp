@@ -32,6 +32,7 @@
 #include "viewmodel/settings_view.h"
 #include "viewmodel/messages_view.h"
 #include "viewmodel/statusbar_view.h"
+#include "viewmodel/theme.h"
 #include "model/app_model.h"
 
 #include "wallet/wallet_db.h"
@@ -80,7 +81,11 @@ using namespace beam;
 using namespace std;
 using namespace ECC;
 
+#ifdef BEAM_TESTNET
+static const char* AppName = "Beam Wallet Testnet";
+#else
 static const char* AppName = "Beam Wallet";
+#endif // BEAM_TESTNET
 
 int main (int argc, char* argv[])
 {
@@ -91,7 +96,7 @@ int main (int argc, char* argv[])
 
     QApplication app(argc, argv);
 
-	app.setWindowIcon(QIcon(":/assets/icon.png"));
+	app.setWindowIcon(QIcon(Theme::iconPath()));
 
     QApplication::setApplicationName(AppName);
 
@@ -181,6 +186,13 @@ int main (int argc, char* argv[])
                 }
             }
 
+            qmlRegisterSingletonType<Theme>(
+                    "Beam.Wallet", 1, 0, "Theme",
+                    [](QQmlEngine* engine, QJSEngine* scriptEngine) -> QObject* {
+                        Q_UNUSED(engine)
+                        Q_UNUSED(scriptEngine)
+                        return new Theme;
+                    });
             qmlRegisterType<StartViewModel>("Beam.Wallet", 1, 0, "StartViewModel");
             qmlRegisterType<LoadingViewModel>("Beam.Wallet", 1, 0, "LoadingViewModel");
             qmlRegisterType<MainViewModel>("Beam.Wallet", 1, 0, "MainViewModel");

@@ -111,9 +111,8 @@ namespace
                 nodeDB.Open(nodePath.c_str());
                 return;
             }
-            catch (const beam::CorruptionException&)
+            catch (const beam::NodeDBUpgradeException&)
             {
-                // 
             }
             
             boost::filesystem::remove(pathFromStdString(nodePath));
@@ -121,7 +120,7 @@ namespace
             std::vector<boost::filesystem::path> macroBlockFiles;
             for (boost::filesystem::directory_iterator endDirIt, it{ appDataPath }; it != endDirIt; ++it)
             {
-                if (it->path().filename().wstring().find(L"temp") == 0)
+                if (it->path().filename().wstring().find(L"tempmb") == 0)
                 {
                     macroBlockFiles.push_back(it->path());
                 }
@@ -557,4 +556,22 @@ QString StartViewModel::selectCustomWalletDB()
         QStandardPaths::writableLocation(QStandardPaths::DesktopLocation), tr("SQLite database file (*.db)"));
 
     return filePath;
+}
+
+QString StartViewModel::defaultPortToListen() const
+{
+#ifdef BEAM_TESTNET
+    return "11005";
+#else
+    return "10005";
+#endif  // BEAM_TESTNET
+}
+
+QString StartViewModel::defaultRemoteNodeAddr() const
+{
+#ifdef BEAM_TESTNET
+    return "127.0.0.1:11005";
+#else
+    return "127.0.0.1:10005";
+#endif // BEAM_TESTNET
 }

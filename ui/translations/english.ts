@@ -226,22 +226,22 @@
 <context>
     <name>PaymentInfoDialog</name>
     <message>
-        <location filename="../view/controls/PaymentInfoDialog.qml" line="63"/>
+        <location filename="../view/controls/PaymentInfoDialog.qml" line="64"/>
         <source>Payment proof verification</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../view/controls/PaymentInfoDialog.qml" line="63"/>
+        <location filename="../view/controls/PaymentInfoDialog.qml" line="64"/>
         <source>Payment proof</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../view/controls/PaymentInfoDialog.qml" line="70"/>
+        <location filename="../view/controls/PaymentInfoDialog.qml" line="71"/>
         <source>close</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../view/controls/PaymentInfoDialog.qml" line="88"/>
+        <location filename="../view/controls/PaymentInfoDialog.qml" line="89"/>
         <source>Paste your payment proof here</source>
         <translation type="unfinished"></translation>
     </message>
@@ -306,6 +306,19 @@
     </message>
 </context>
 <context>
+    <name>SFTextArea</name>
+    <message>
+        <location filename="../view/controls/SFTextArea.qml" line="81"/>
+        <source>copy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../view/controls/SFTextArea.qml" line="96"/>
+        <source>paste</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>SFTextInput</name>
     <message>
         <location filename="../view/controls/SFTextInput.qml" line="81"/>
@@ -339,22 +352,22 @@
 <context>
     <name>StartViewModel</name>
     <message>
-        <location filename="../viewmodel/start_view.cpp" line="398"/>
+        <location filename="../viewmodel/start_view.cpp" line="397"/>
         <source>Printer is not found. Please, check your printer preferences.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewmodel/start_view.cpp" line="446"/>
+        <location filename="../viewmodel/start_view.cpp" line="445"/>
         <source>Failed to print seed phrases. Please, check your printer.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewmodel/start_view.cpp" line="556"/>
+        <location filename="../viewmodel/start_view.cpp" line="555"/>
         <source>Select the wallet database file</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewmodel/start_view.cpp" line="557"/>
+        <location filename="../viewmodel/start_view.cpp" line="556"/>
         <source>SQLite database file (*.db)</source>
         <translation type="unfinished"></translation>
     </message>
@@ -484,7 +497,7 @@
     </message>
     <message>
         <location filename="../viewmodel/wallet_view.cpp" line="208"/>
-        <source>Failed to send tx parameters</source>
+        <source>Failed to send Transaction parameters</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -499,7 +512,7 @@
     </message>
     <message>
         <location filename="../viewmodel/wallet_view.cpp" line="211"/>
-        <source>Failed to get parameter</source>
+        <source>Failed to get transaction parameters</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -515,6 +528,11 @@
     <message>
         <location filename="../viewmodel/wallet_view.cpp" line="214"/>
         <source>Kernel maximum height is too high</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../viewmodel/wallet_view.cpp" line="215"/>
+        <source>Transaction has invalid state</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -642,12 +660,12 @@
 <context>
     <name>WalletViewModel</name>
     <message>
-        <location filename="../viewmodel/wallet_view.cpp" line="577"/>
+        <location filename="../viewmodel/wallet_view.cpp" line="581"/>
         <source> beams</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewmodel/wallet_view.cpp" line="579"/>
+        <location filename="../viewmodel/wallet_view.cpp" line="583"/>
         <source> groths</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1231,7 +1249,7 @@ Are you sure?</source>
     </message>
     <message>
         <location filename="../view/wallet.qml" line="187"/>
-        <location filename="../view/wallet.qml" line="1221"/>
+        <location filename="../view/wallet.qml" line="1220"/>
         <source>delete</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1314,7 +1332,7 @@ Are you sure?</source>
     </message>
     <message>
         <location filename="../view/wallet.qml" line="558"/>
-        <source>Insufficient funds: you would need %1 to complete the transaction.</source>
+        <source>Insufficient funds: you would need %1 to complete the transaction</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1364,42 +1382,42 @@ Are you sure?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../view/wallet.qml" line="1007"/>
+        <location filename="../view/wallet.qml" line="1006"/>
         <source>Date | time</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../view/wallet.qml" line="1036"/>
+        <location filename="../view/wallet.qml" line="1035"/>
         <source>Address</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../view/wallet.qml" line="1065"/>
+        <location filename="../view/wallet.qml" line="1064"/>
         <source>Amount</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../view/wallet.qml" line="1096"/>
+        <location filename="../view/wallet.qml" line="1095"/>
         <source>Status</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../view/wallet.qml" line="1186"/>
+        <location filename="../view/wallet.qml" line="1185"/>
         <source>Actions</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../view/wallet.qml" line="1203"/>
+        <location filename="../view/wallet.qml" line="1202"/>
         <source>copy address</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../view/wallet.qml" line="1213"/>
+        <location filename="../view/wallet.qml" line="1212"/>
         <source>cancel</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../view/wallet.qml" line="1225"/>
+        <location filename="../view/wallet.qml" line="1224"/>
         <source>The transaction will be deleted. This operation can not be undone</source>
         <translation type="unfinished"></translation>
     </message>

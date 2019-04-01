@@ -293,7 +293,7 @@ void NodeDB::Open(const char* szPath)
 	{
 		uint64_t nVer = ParamIntGetDef(ParamID::DbVer);
 		if (nVer < nVersionTop)
-			throw std::runtime_error("Node upgrade is not supported. Please, remove node.db and tempmb files");
+			throw NodeDBUpgradeException("Node upgrade is not supported. Please, remove node.db and tempmb files");
 	}
 
 	t.Commit();
@@ -1371,6 +1371,18 @@ void NodeDB::EnumFunctionalTips(WalkerState& x)
 		" FROM " TblTipsReachable
 		" LEFT JOIN " TblStates " ON (" TblTipsReachable "." TblTips_State "=" TblStates ".rowid) "
 		" ORDER BY "  TblTipsReachable "." TblTips_ChainWork " DESC");
+}
+
+Height NodeDB::get_HeightBelow(Height h)
+{
+	Recordset rs(*this, Query::FindHeightBelow, "SELECT " TblStates_Height " FROM " TblStates " WHERE " TblStates_Height "<? ORDER BY " TblStates_Height " DESC LIMIT 1");
+	rs.put(0, h);
+
+	if (!rs.Step())
+		return Rules::HeightGenesis - 1;
+
+	rs.get(0, h);
+	return h;
 }
 
 void NodeDB::EnumStatesAt(WalkerState& x, Height h)

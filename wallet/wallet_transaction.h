@@ -80,6 +80,7 @@ namespace beam { namespace wallet
             T value{};
             if (!getTxParameter(*m_WalletDB, GetTxID(), paramID, value))
             {
+                LOG_ERROR() << GetTxID() << " Failed to get parameter: " << (int)paramID;
                 throw TransactionFailedException(true, TxFailureReason::FailedToGetParameter);
             }
             return value;
@@ -182,7 +183,7 @@ namespace beam { namespace wallet
         bool FinalizeOutputs();
         Output::Ptr CreateOutput(Amount amount, bool bChange);
         void CreateKernel();
-        void GenerateBlindingExcess();
+        bool GenerateBlindingExcess();
         void GenerateNonce();
         ECC::Point::Native GetPublicExcess() const;
         ECC::Point::Native GetPublicNonce() const;

@@ -20,6 +20,14 @@
 
 namespace beam {
 
+class NodeDBUpgradeException : public std::runtime_error
+{
+public:
+    NodeDBUpgradeException(const char* message)
+        : std::runtime_error(message)
+    {}
+};
+
 class NodeDB
 {
 public:
@@ -138,6 +146,7 @@ public:
 			TxoDelSpentTxosFrom,
 			TxoSetValue,
             BlockFind,
+			FindHeightBelow,
 
 			Dbg0,
 			Dbg1,
@@ -280,6 +289,7 @@ public:
 	void EnumTips(WalkerState&); // height lowest to highest
 	void EnumFunctionalTips(WalkerState&); // chainwork highest to lowest
 
+	Height get_HeightBelow(Height);
 	void EnumStatesAt(WalkerState&, Height);
 	void EnumAncestors(WalkerState&, const StateID&);
 	bool get_Prev(StateID&);

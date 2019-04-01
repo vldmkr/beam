@@ -1,8 +1,9 @@
 set (TARGET_NAME "beam-wallet-ui")
+
 if(LINUX)
-    set (OUTPUT_NAME "BeamWallet")
+    set (OUTPUT_NAME "BeamWallet${BEAM_SUFFIX_UPPER_CASE}")
 else()
-    set (OUTPUT_NAME "Beam Wallet")
+    set (OUTPUT_NAME "Beam Wallet${BEAM_DISPLAY_SUFFIX}")
 endif()
 set (CMAKE_PREFIX_PATH $ENV{QT5_ROOT_DIR})
 
@@ -64,7 +65,9 @@ set(UI_SRC
 	viewmodel/messages_view.h
     viewmodel/messages_view.cpp
     viewmodel/statusbar_view.h
-    viewmodel/statusbar_view.cpp
+	viewmodel/statusbar_view.cpp
+	viewmodel/theme.h
+    viewmodel/theme.cpp
 
 	model/wallet_model.h
 	model/wallet_model.cpp
@@ -87,7 +90,26 @@ endif()
 if(WIN32)
 	add_definitions(-DWIN32_LEAN_AND_MEAN)
 endif()
+
+set(BEAM_ICON_SUFFIX "masternet")
+if(BEAM_TESTNET)
+    set(BEAM_ICON_SUFFIX "testnet")
+elseif(BEAM_MAINNET)
+    set(BEAM_ICON_SUFFIX "mainnet")
+endif()
+
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/icons/icon_${BEAM_ICON_SUFFIX}.ico
+          ${CMAKE_CURRENT_SOURCE_DIR}/icons/beam_${BEAM_ICON_SUFFIX}.png
+          ${CMAKE_CURRENT_SOURCE_DIR}/icons/beam_${BEAM_ICON_SUFFIX}.icns
+     DESTINATION  ${CMAKE_CURRENT_SOURCE_DIR})
+
+file(RENAME ${CMAKE_CURRENT_SOURCE_DIR}/icon_${BEAM_ICON_SUFFIX}.ico ${CMAKE_CURRENT_SOURCE_DIR}/icon.ico)
+file(RENAME ${CMAKE_CURRENT_SOURCE_DIR}/beam_${BEAM_ICON_SUFFIX}.png ${CMAKE_CURRENT_SOURCE_DIR}/beam.png)
+file(RENAME ${CMAKE_CURRENT_SOURCE_DIR}/beam_${BEAM_ICON_SUFFIX}.icns ${CMAKE_CURRENT_SOURCE_DIR}/beam.icns)
+
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/beam.rc.in ${CMAKE_CURRENT_SOURCE_DIR}/beam.rc)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/beam.desktop.in ${CMAKE_CURRENT_SOURCE_DIR}/beam.desktop)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in ${CMAKE_CURRENT_SOURCE_DIR}/Info.plist)
 add_executable(${TARGET_NAME} ${SYSTEM_TYPE} ${UI_SRC} ${QT_RESOURCES} beam.rc ${MACOSX_BUNDLE_ICON_FILE} ${QM_FILES})
 set_target_properties(${TARGET_NAME} PROPERTIES OUTPUT_NAME ${OUTPUT_NAME})
 
@@ -119,7 +141,7 @@ target_link_libraries(${TARGET_NAME} wallet mnemonic Qt5::Qml Qt5::Quick Qt5::Sv
 if (BEAM_SIGN_PACKAGE AND WIN32)
     add_custom_command(
         TARGET ${TARGET_NAME} POST_BUILD
-        COMMAND ${SIGNTOOL_EXECUTABLE} sign ${SIGNTOOL_OPTIONS} "${CMAKE_CURRENT_BINARY_DIR}\\Beam Wallet.exe"
+        COMMAND ${SIGNTOOL_EXECUTABLE} sign ${SIGNTOOL_OPTIONS} "${CMAKE_CURRENT_BINARY_DIR}\\${OUTPUT_NAME}.exe"
     )
 endif()
 
