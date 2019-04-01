@@ -16,7 +16,7 @@
 
 #include <boost/program_options.hpp>
 #include "core/ecc.h"
-#include "logger.h"
+#include "utility/logger.h"
 
 namespace beam
 {
@@ -100,6 +100,7 @@ namespace beam
         extern const char* IP_WHITELIST;
 		extern const char* HORIZON_HI;
 		extern const char* HORIZON_LO;
+		extern const char* HEIGHT_MIN;
 
         // wallet api
         extern const char* API_USE_HTTP;

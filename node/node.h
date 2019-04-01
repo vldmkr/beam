@@ -62,7 +62,6 @@ struct Node
 		} m_Timeout;
 
 		uint32_t m_MaxConcurrentBlocksRequest = 18;
-		uint32_t m_BbsIdealChannelPopulation = 100;
 		uint32_t m_MaxPoolTransactions = 100 * 1000;
 		uint32_t m_MiningThreads = 0; // by default disabled
 
@@ -113,6 +112,8 @@ struct Node
 		NodeProcessor::StartParams m_ProcessorParams;
 
 		IObserver* m_Observer = nullptr;
+
+		Height m_MinSyncHeight = MaxHeight;
 
 	} m_Cfg; // must not be changed after initialization
 
@@ -256,6 +257,7 @@ private:
 
 	void UpdateSyncStatus();
 	void UpdateSyncStatusRaw();
+	Height get_MinSyncHeight() const;
 
 	void TryAssignTask(Task&, const PeerID*);
 	bool TryAssignTask(Task&, Peer&);

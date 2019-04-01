@@ -19,8 +19,8 @@
 #include "core/ecc_native.h"
 #include "core/ecc.h"
 #include "core/serialization_adapters.h"
+#include "utility/cli/options.h"
 #include "utility/log_rotation.h"
-#include "utility/options.h"
 #include "utility/helpers.h"
 #include <iomanip>
 
@@ -317,6 +317,8 @@ int main_impl(int argc, char* argv[])
 					node.m_Cfg.m_Horizon.m_Branching = Rules::get().Macroblock.MaxRollback / 4; // inferior branches would be pruned when height difference is this.
 					node.m_Cfg.m_Horizon.m_SchwarzschildHi = vm[cli::HORIZON_HI].as<Height>();
 					node.m_Cfg.m_Horizon.m_SchwarzschildLo = vm[cli::HORIZON_LO].as<Height>();
+
+					node.m_Cfg.m_MinSyncHeight = vm[cli::HEIGHT_MIN].as<Height>();
 
 					node.Initialize(stratumServer.get());
 
