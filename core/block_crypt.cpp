@@ -852,7 +852,7 @@ namespace beam
 			0x3c, 0x26, 0xa5, 0x26, 0xd2, 0xe2, 0x20, 0x63,
 		};
 
-		T0 = 1546473600; // 2019-01-03
+		T0 = 0;
 	}
 
 	Amount Rules::get_EmissionEx(Height h, Height& hEnd, Amount base) const
