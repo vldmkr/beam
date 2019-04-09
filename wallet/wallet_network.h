@@ -146,10 +146,23 @@ namespace beam
     private:
         void AddOwnAddress(uint64_t ownID, BbsChannel, Timestamp expirationTime, const WalletID& walletID);
         // IWalletNetwork
-        virtual void Send(const WalletID& peerID, wallet::SetTxParameter&& msg) override;
+        void Send(const WalletID& peerID, wallet::SetTxParameter&& msg) override;
 
         void OnAddressTimer();
     private:
         io::Timer::Ptr m_AddressExpirationTimer;
+    };
+
+    class ColdWalletNetwork
+        : public IWalletNetwork
+    {
+    public:
+        ColdWalletNetwork(IWallet& wallet, const std::string& path);
+        bool ProcessIncommingMessages();
+    private:
+        void Send(const WalletID& peerID, wallet::SetTxParameter&& msg) override;
+    private:
+        IWallet& m_Wallet;
+        std::string m_Path;
     };
 }

@@ -953,19 +953,19 @@ int main_impl(int argc, char* argv[])
                         return ShowAddressList(walletDB);
                     }
 
-                    if (vm.count(cli::NODE_ADDR) == 0)
-                    {
-                        LOG_ERROR() << "node address should be specified";
-                        return -1;
-                    }
-
-                    string nodeURI = vm[cli::NODE_ADDR].as<string>();
-                    io::Address node_addr;
-                    if (!node_addr.resolve(nodeURI.c_str()))
-                    {
-                        LOG_ERROR() << "unable to resolve node address: " << nodeURI;
-                        return -1;
-                    }
+                    //if (vm.count(cli::NODE_ADDR) == 0)
+                    //{
+                    //    LOG_ERROR() << "node address should be specified";
+                    //    return -1;
+                    //}
+                    //
+                    //string nodeURI = vm[cli::NODE_ADDR].as<string>();
+                    //io::Address node_addr;
+                    //if (!node_addr.resolve(nodeURI.c_str()))
+                    //{
+                    //    LOG_ERROR() << "unable to resolve node address: " << nodeURI;
+                    //    return -1;
+                    //}
 
                     io::Address receiverAddr;
                     Amount amount = 0;
@@ -1010,20 +1010,37 @@ int main_impl(int argc, char* argv[])
 
                     Wallet wallet{ walletDB, is_server ? Wallet::TxCompletedAction() : [](auto) { io::Reactor::get_Current().stop(); } };
 
-                    proto::FlyClient::NetworkStd nnet(wallet);
-                    nnet.m_Cfg.m_vNodes.push_back(node_addr);
-                    nnet.Connect();
+                    //proto::FlyClient::NetworkStd nnet(wallet);
+                    //nnet.m_Cfg.m_vNodes.push_back(node_addr);
+                    //nnet.Connect();
+                    struct ColdNetwork : beam::proto::FlyClient::INetwork
+                    {
+                        void Connect() override {};
+                        void Disconnect() override {};
+                        void PostRequestInternal(proto::FlyClient::Request&) override {};
+                    };
 
-                    WalletNetworkViaBbs wnet(wallet, nnet, walletDB);
-                        
+                    ColdNetwork nnet;
+                    //WalletNetworkViaBbs wnet(wallet, nnet, walletDB);
+
+                    ColdWalletNetwork wnet(wallet, "./");
+
                     wallet.set_Network(nnet, wnet);
 
                     if (isTxInitiator)
                     {
                         WalletAddress senderAddress = newAddress(walletDB, "");
-                        wnet.AddOwnAddress(senderAddress);
+                        //wnet.AddOwnAddress(senderAddress);
                         CoinIDList coinIDs = GetPreselectedCoinIDs(vm);
                         wallet.transfer_money(senderAddress.m_walletID, receiverWalletID, move(amount), move(fee), coinIDs, command == cli::SEND, true);
+                    }
+                    else
+                    {
+                        if (!wnet.ProcessIncommingMessages())
+                        {
+                            LOG_INFO() << "There are no incomming transactions to proceed.";
+                            return 0;
+                        }
                     }
 
                     if (command == cli::CANCEL_TX) 

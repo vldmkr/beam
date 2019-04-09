@@ -103,6 +103,7 @@ namespace beam
         const char* IP_WHITELIST = "ip_whitelist";
 		const char* HORIZON_HI = "horizon_hi";
 		const char* HORIZON_LO = "horizon_lo";
+        //const char* COLD_WALLET = 
 
         // wallet api
         const char* API_USE_HTTP = "use_http";

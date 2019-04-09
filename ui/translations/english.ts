@@ -37,17 +37,17 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../view/controls/AddressTable.qml" line="122"/>
+        <location filename="../view/controls/AddressTable.qml" line="134"/>
         <source>Actions</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../view/controls/AddressTable.qml" line="141"/>
+        <location filename="../view/controls/AddressTable.qml" line="153"/>
         <source>edit address</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../view/controls/AddressTable.qml" line="149"/>
+        <location filename="../view/controls/AddressTable.qml" line="161"/>
         <source>delete address</source>
         <translation type="unfinished"></translation>
     </message>
@@ -213,12 +213,12 @@
 <context>
     <name>LogoComponent</name>
     <message>
-        <location filename="../view/controls/LogoComponent.qml" line="30"/>
+        <location filename="../view/controls/LogoComponent.qml" line="31"/>
         <source>BEAM</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../view/controls/LogoComponent.qml" line="49"/>
+        <location filename="../view/controls/LogoComponent.qml" line="50"/>
         <source>Scalable confidential cryptocurrency</source>
         <translation type="unfinished"></translation>
     </message>

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "wallet_network.h"
+#include <boost/filesystem.hpp>
 
 using namespace std;
 
@@ -459,4 +460,77 @@ namespace beam {
 		}
 
 	}
+
+    /////////////////////////////////
+
+
+    namespace
+    {
+        boost::filesystem::path GetValidTxPath(const string& path)
+        {
+            boost::filesystem::path txPath = path;
+            txPath /= "transactions";
+            if (!boost::filesystem::exists(txPath))
+            {
+                boost::filesystem::create_directory(txPath);
+            }
+            return txPath;
+        }
+    }
+
+    ColdWalletNetwork::ColdWalletNetwork(IWallet& wallet, const std::string& path)
+        : m_Wallet(wallet)
+        , m_Path(path)
+    {
+
+    }
+
+    bool ColdWalletNetwork::ProcessIncommingMessages()
+    {
+        bool hasMessages = false;
+        boost::filesystem::path txPath = GetValidTxPath(m_Path);
+        for (auto& entry : boost::filesystem::directory_iterator(txPath))
+        {
+            if (is_regular_file(entry) && entry.path().extension() == ".in")
+            {
+                auto t = entry.path().extension();
+                std::FStream f;
+                if (f.Open(entry.path().string().c_str(), true, false))
+                {
+                    wallet::SetTxParameter msg;
+                    yas::binary_iarchive<std::FStream, SERIALIZE_OPTIONS> arc(f);
+                    arc & msg;
+                    WalletID peerID;
+                    if (peerID.FromHex(entry.path().stem().string()))
+                    {
+                        hasMessages = true;
+                        m_Wallet.OnWalletMessage(peerID, move(msg));
+                    }
+                }
+                
+            }
+        }
+        return hasMessages;
+    }
+
+    void ColdWalletNetwork::Send(const WalletID& peerID, wallet::SetTxParameter&& msg)
+    {
+        try
+        {
+            boost::filesystem::path txPath = GetValidTxPath(m_Path);
+            txPath /= to_string(peerID);
+            txPath.replace_extension("out");
+            std::FStream f;
+            f.Open(txPath.string().c_str(), false, true);
+
+            yas::binary_oarchive<std::FStream, SERIALIZE_OPTIONS> arc(f);
+            arc & msg;
+            io::Reactor::get_Current().stop();
+        }
+        catch (const exception& ex)
+        {
+            LOG_ERROR() << ex.what();
+        }
+    }
+
 }
