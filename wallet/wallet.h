@@ -67,7 +67,7 @@ namespace beam
     public:
         using TxCompletedAction = std::function<void(const TxID& tx_id)>;
 
-        Wallet(IWalletDB::Ptr walletDB, TxCompletedAction&& action = TxCompletedAction());
+        Wallet(IWalletDB::Ptr walletDB, ISecureDB::Ptr secureDB, TxCompletedAction&& action = TxCompletedAction());
         virtual ~Wallet();
 
         void set_Network(proto::FlyClient::INetwork&, IWalletNetwork&);
@@ -202,7 +202,7 @@ namespace beam
         REQUEST_TYPES_All(THE_MACRO)
 #undef THE_MACRO
 
-        IWalletDB::Ptr m_WalletDB;
+        WalletDB m_WalletDB;
         proto::FlyClient::INetwork* m_pNodeNetwork;
         IWalletNetwork* m_pWalletNetwork;
         std::map<TxID, wallet::BaseTransaction::Ptr> m_Transactions;
