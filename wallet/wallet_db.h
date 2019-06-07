@@ -247,6 +247,7 @@ namespace beam::wallet
         virtual void setExpirationForAllAddresses(uint64_t expiration) = 0;
         virtual boost::optional<WalletAddress> getAddress(const WalletID&) const = 0;
         virtual void deleteAddress(const WalletID&) = 0;
+        virtual boost::optional<ECC::Scalar::Native> getAddressPrivateKey(const WalletAddress&) const = 0;
 
         // 
         virtual Timestamp getLastUpdateTime() const = 0;
@@ -286,6 +287,7 @@ namespace beam::wallet
         static bool isInitialized(const std::string& path);
         static Ptr init(const std::string& path, const SecString& password, const ECC::NoLeak<ECC::uintBig>& secretKey, io::Reactor::Ptr reactor, bool separateDBForPrivateData = false);
         static Ptr open(const std::string& path, const SecString& password, io::Reactor::Ptr reactor);
+        static void createMirror(const std::string& path, const std::string& mirrorPath, const SecString& password);
 
         WalletDB(sqlite3* db, io::Reactor::Ptr reactor, sqlite3* sdb);
         WalletDB(sqlite3* db, const ECC::NoLeak<ECC::uintBig>& secretKey, io::Reactor::Ptr reactor, sqlite3* sdb);
@@ -330,6 +332,7 @@ namespace beam::wallet
         void setExpirationForAllAddresses(uint64_t expiration) override;
         boost::optional<WalletAddress> getAddress(const WalletID&) const override;
         void deleteAddress(const WalletID&) override;
+        boost::optional<ECC::Scalar::Native> getAddressPrivateKey(const WalletAddress&) const override;
 
         Timestamp getLastUpdateTime() const override;
         void setSystemStateID(const Block::SystemState::ID& stateID) override;
@@ -555,5 +558,6 @@ namespace beam::wallet
         std::string TxDetailsInfo(const IWalletDB::Ptr& db, const TxID& txID);
         ByteBuffer ExportPaymentProof(const IWalletDB& db, const TxID& txID);
         bool VerifyPaymentProof(const ByteBuffer& data);
+        void LimitAddresses(IWalletDB& db, uint32_t maxAddresses);
     }
 }

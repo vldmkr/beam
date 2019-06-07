@@ -33,6 +33,7 @@ namespace beam
         extern const char* STRATUM_USE_TLS;
         extern const char* STORAGE;
         extern const char* WALLET_STORAGE;
+        extern const char* WALLET_MIRROR_STORAGE;
         extern const char* MINING_THREADS;
         extern const char* VERIFICATION_THREADS;
         extern const char* NONCEPREFIX_DIGITS;
@@ -63,6 +64,7 @@ namespace beam
         extern const char* CRASH;
         extern const char* INIT;
         extern const char* RESTORE;
+        extern const char* CREATE_MIRROR;
         extern const char* EXPORT_MINER_KEY;
         extern const char* EXPORT_OWNER_KEY;
         extern const char* KEY_SUBKEY;
@@ -123,6 +125,8 @@ namespace beam
         extern const char* LTC_CONFIRMATIONS;
         extern const char* BTC_LOCK_TIME;
         extern const char* LTC_LOCK_TIME;
+        extern const char* LIMIT_ADDRESSES;
+        extern const char* MAX_ADDRESSES;
 
 
         // wallet api

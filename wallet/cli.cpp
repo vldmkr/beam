@@ -226,6 +226,17 @@ namespace
         arc & x;
     }
 
+    optional<SecString> GetPassword(const po::variables_map& vm)
+    {
+        SecString pass;
+        if (!beam::read_wallet_pass(pass, vm))
+        {
+            LOG_ERROR() << "Please, provide password for the wallet.";
+            return {};
+        }
+        return pass;
+    }
+
     int HandleTreasury(const po::variables_map& vm, Key::IKdf& kdf)
     {
         PeerID wid;
@@ -475,7 +486,7 @@ namespace
         return -1;
     }
 
-    WalletAddress newAddress(const IWalletDB::Ptr& walletDB, const std::string& comment, bool isNever = false)
+    WalletAddress CreateNewAddress(const IWalletDB::Ptr& walletDB, const std::string& comment, bool isNever = false)
     {
         WalletAddress address = storage::createAddress(*walletDB);
 
@@ -855,6 +866,26 @@ namespace
         return storage::ImportAddressesFromJson(*walletDB, p, buffer.size()) ? 0 : -1;
     }
 
+    int CreateMirror(const po::variables_map& vm, const IWalletDB::Ptr& walletDB)
+    {
+        auto walletPath = vm[cli::WALLET_STORAGE].as<string>();
+        auto mirrorPath = vm[cli::WALLET_MIRROR_STORAGE].as<string>();
+        auto password = GetPassword(vm);
+        if (!password)
+        {
+            return -1;
+        }
+        WalletDB::createMirror(walletPath, mirrorPath, *password);
+        return 0;
+    }
+
+    int LimitAddresses(const po::variables_map& vm, const IWalletDB::Ptr& walletDB)
+    {
+        auto maxAddresses = vm[cli::MAX_ADDRESSES].as<Positive<uint32_t>>().value;
+        storage::LimitAddresses(*walletDB, maxAddresses);
+        return 0;
+    }
+
     CoinIDList GetPreselectedCoinIDs(const po::variables_map& vm)
     {
         CoinIDList coinIDs;
@@ -1011,7 +1042,7 @@ int main_impl(int argc, char* argv[])
                     auto command = vm[cli::COMMAND].as<string>();
 
                     {
-                        const vector<string> commands =
+                        const string commands[] =
                         {
                             cli::INIT,
                             cli::RESTORE,
@@ -1035,10 +1066,12 @@ int main_impl(int argc, char* argv[])
                             cli::IMPORT_ADDRESSES,
                             cli::EXPORT_ADDRESSES,
                             cli::SWAP_INIT,
-                            cli::SWAP_LISTEN
+                            cli::SWAP_LISTEN,
+                            cli::CREATE_MIRROR,
+                            cli::LIMIT_ADDRESSES
                         };
 
-                        if (find(commands.cbegin(), commands.cend(), command) == commands.cend())
+                        if (find(begin(commands), end(commands), command) == end(commands))
                         {
                             LOG_ERROR() << "unknown command: \'" << command << "\'";
                             return -1;
@@ -1109,7 +1142,7 @@ int main_impl(int argc, char* argv[])
                             LOG_INFO() << "wallet successfully created...";
 
                             // generate default address
-                            newAddress(walletDB, "default");
+                            CreateNewAddress(walletDB, "default");
 
                             return 0;
                         }
@@ -1152,6 +1185,16 @@ int main_impl(int argc, char* argv[])
                         return ImportAddresses(vm, walletDB);
                     }
 
+                    if (command == cli::CREATE_MIRROR)
+                    {
+                        return CreateMirror(vm, walletDB);
+                    }
+
+                    if (command == cli::LIMIT_ADDRESSES)
+                    {
+                        return LimitAddresses(vm, walletDB);
+                    }
+
                     {
                         const auto& var = vm[cli::PAYMENT_PROOF_REQUIRED];
                         if (!var.empty())
@@ -1168,7 +1211,7 @@ int main_impl(int argc, char* argv[])
                     if (command == cli::NEW_ADDRESS)
                     {
                         auto comment = vm[cli::NEW_ADDRESS_COMMENT].as<string>();
-                        newAddress(walletDB, comment, vm[cli::EXPIRATION_TIME].as<string>() == "never");
+                        CreateNewAddress(walletDB, comment, vm[cli::EXPIRATION_TIME].as<string>() == "never");
 
                         if (!vm.count(cli::LISTEN))
                         {
@@ -1404,7 +1447,7 @@ int main_impl(int argc, char* argv[])
                                     return -1;
                                 }
 
-                                WalletAddress senderAddress = newAddress(walletDB, "");
+                                WalletAddress senderAddress = CreateNewAddress(walletDB, "");
 
                                 currentTxID = wallet.swap_coins(senderAddress.m_walletID, receiverWalletID, 
                                     move(amount), move(fee), swapCoin, swapAmount, isBeamSide);
@@ -1435,7 +1478,7 @@ int main_impl(int argc, char* argv[])
 
                         if (isTxInitiator)
                         {
-                            WalletAddress senderAddress = newAddress(walletDB, "");
+                            WalletAddress senderAddress = CreateNewAddress(walletDB, "");
                             CoinIDList coinIDs = GetPreselectedCoinIDs(vm);
                             currentTxID = wallet.transfer_money(senderAddress.m_walletID, receiverWalletID, move(amount), move(fee), coinIDs, command == cli::SEND, kDefaultTxLifetime, kDefaultTxResponseTime, {}, true);
                         }

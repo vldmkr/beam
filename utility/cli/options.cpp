@@ -38,6 +38,7 @@ namespace beam
         const char* STRATUM_USE_TLS = "stratum_use_tls";
         const char* STORAGE = "storage";
         const char* WALLET_STORAGE = "wallet_path";
+        const char* WALLET_MIRROR_STORAGE = "wallet_mirror_path";
         const char* MINING_THREADS = "mining_threads";
         const char* VERIFICATION_THREADS = "verification_threads";
         const char* NONCEPREFIX_DIGITS = "nonceprefix_digits";
@@ -66,6 +67,7 @@ namespace beam
         const char* CRASH = "crash";
         const char* INIT = "init";
         const char* RESTORE = "restore";
+        const char* CREATE_MIRROR = "create_mirror";
         const char* EXPORT_MINER_KEY = "export_miner_key";
         const char* EXPORT_OWNER_KEY = "export_owner_key";
         const char* KEY_SUBKEY = "subkey";
@@ -126,6 +128,8 @@ namespace beam
         const char* LTC_CONFIRMATIONS = "ltc_confiramtions";
         const char* BTC_LOCK_TIME = "btc_lock_time";
         const char* LTC_LOCK_TIME = "ltc_lock_time";
+        const char* LIMIT_ADDRESSES = "limit_addresses";
+        const char* MAX_ADDRESSES = "max_addresses";
 
         // wallet api
         const char* API_USE_HTTP = "use_http";
@@ -277,6 +281,7 @@ namespace beam
             (cli::BTC_NODE_ADDR, po::value<string>(), "address of bitcoin node")
             (cli::LTC_NODE_ADDR, po::value<string>(), "address of litecoin node")
             (cli::WALLET_STORAGE, po::value<string>()->default_value("wallet.db"), "path to wallet file")
+            (cli::WALLET_MIRROR_STORAGE, po::value<string>()->default_value("wallet_mirror.db"), "path to the wallet's mirror file")
             (cli::TX_HISTORY, "print transacrions' history in info command")
             (cli::LISTEN, "start listen after new_addr command")
             (cli::TX_ID, po::value<string>()->default_value(""), "tx id")
@@ -290,7 +295,7 @@ namespace beam
             (cli::UTXO, po::value<vector<string>>()->multitoken(), "preselected utxos to transfer")
             (cli::IMPORT_EXPORT_PATH, po::value<string>()->default_value("addresses.dat"), "path to import or export data (import_addresses|export_addresses)")
             (cli::COLD_WALLET, "used to init cold wallet")
-            (cli::COMMAND, po::value<string>(), "command to execute [new_addr|send|receive|listen|init|restore|info|export_miner_key|export_owner_key|generate_phrase|change_address_expiration|address_list|rescan|export_addresses|import_addresses|tx_details|payment_proof_export|payment_proof_verify|utxo|cancel_tx|delete_tx|swap_init|swap_listen]")
+            (cli::COMMAND, po::value<string>(), "command to execute [new_addr|send|receive|listen|init|restore|create_mirror|info|export_miner_key|export_owner_key|generate_phrase|change_address_expiration|address_list|rescan|export_addresses|import_addresses|tx_details|payment_proof_export|payment_proof_verify|utxo|cancel_tx|delete_tx|swap_init|swap_listen|limit_addresses]")
             (cli::SWAP_AMOUNT, po::value<Positive<Amount>>(), "swap amount in the smallest unit of the coin")
             (cli::SWAP_FEERATE, po::value<Positive<Amount>>()->default_value(Positive<Amount>(20000)), "The specific feerate you are willing to pay(satoshis(or photons) per KB)")
             (cli::SWAP_COIN, po::value<string>(), "swap coin(btc, ltc)")
@@ -299,7 +304,9 @@ namespace beam
             (cli::BTC_CONFIRMATIONS, po::value<Positive<uint16_t>>(), "confirmations count in bitcoin chain")
             (cli::LTC_CONFIRMATIONS, po::value<Positive<uint16_t>>(), "confirmations count in litecoin chain")
             (cli::BTC_LOCK_TIME, po::value<Positive<uint32_t>>(), "lock time in blocks bitcoin transaction")
-            (cli::LTC_LOCK_TIME, po::value<Positive<uint32_t>>(), "lock time in blocks litecoin transaction");
+            (cli::LTC_LOCK_TIME, po::value<Positive<uint32_t>>(), "lock time in blocks litecoin transaction")
+            (cli::MAX_ADDRESSES, po::value<Positive<uint32_t>>()->default_value(numeric_limits<Positive<uint32_t>>::max()), "maximum of addresses allowed to generate and to listen");
+
 
         po::options_description wallet_treasury_options("Wallet treasury options");
         wallet_treasury_options.add_options()

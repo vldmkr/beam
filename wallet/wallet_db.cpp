@@ -676,6 +676,7 @@ namespace beam::wallet
         const char* Version = "Version";
         const char* SystemStateIDName = "SystemStateID";
         const char* LastUpdateTimeName = "LastUpdateTime";
+        const char* MaxAddresses = "MaxAddresses";
         const int BusyTimeoutMs = 5000;
         const int DbVersion = 15;
         const int DbVersion14 = 14;
@@ -823,6 +824,13 @@ namespace beam::wallet
             throwIfError(ret, db);
         }
     
+        void DeletePrivateVariablesTable(sqlite3* db)
+        {
+            const char* req = "DROP TABLE " PRIVATE_VARIABLES_NAME ");";
+            int ret = sqlite3_exec(db, req, nullptr, nullptr, nullptr);
+            throwIfError(ret, db);
+        }
+
         void CreateAddressesTable(sqlite3* db)
         {
             const char* req = "CREATE TABLE " ADDRESSES_NAME " (" ENUM_ADDRESS_FIELDS(LIST_WITH_TYPES, COMMA, ) ") WITHOUT ROWID;";
@@ -1122,6 +1130,27 @@ namespace beam::wallet
 
         return Ptr();
     }
+
+    void WalletDB::createMirror(const string& path, const string& mirrorPath, const SecString& password)
+    {
+        try
+        {
+            auto reactor = io::Reactor::get_Current().shared_from_this();
+            boost::filesystem::copy_file(path, mirrorPath, boost::filesystem::copy_option::overwrite_if_exists);
+            auto walletDB = open(mirrorPath, password, reactor);
+            if (walletDB)
+            {
+                auto w = static_pointer_cast<WalletDB>(walletDB);
+                DeletePrivateVariablesTable(w->m_PrivateDB);
+               // CreatePrivateAddresses(w->_db);
+            }
+        }
+        catch (const runtime_error&)
+        {
+
+        }
+    }
+
 
     WalletDB::WalletDB(sqlite3* db, io::Reactor::Ptr reactor, sqlite3* sdb)
         : _db(db)
@@ -1989,7 +2018,22 @@ namespace beam::wallet
             notifyAddressChanged(ChangeAction::Removed, {*address});
         }
     }
-
+    
+    boost::optional<ECC::Scalar::Native> WalletDB::getAddressPrivateKey(const WalletAddress& address) const
+    {
+        if (get_MasterKdf())
+        {
+            ECC::Scalar::Native sk;
+            get_MasterKdf()->DeriveKey(sk, Key::ID(address.m_OwnID, Key::Type::Bbs));
+            PeerID pk;
+            proto::Sk2Pk(pk, sk); // needed to "normalize" the sk, and calculate the channel
+            if (pk == address.m_walletID.m_Pk) // should be normilized on creation
+            {
+                return sk;
+            }
+        }
+        return {};
+    }
 
     void WalletDB::subscribe(IWalletDbObserver* observer)
     {
@@ -2833,6 +2877,11 @@ namespace beam::wallet
             LOG_INFO() << "Payment tx details:\n" << pi.to_string() << "Verified.";
 
             return true;
+        }
+
+        void LimitAddresses(IWalletDB& db, uint32_t maxAddresses)
+        {
+            setVar(db, MaxAddresses, maxAddresses);
         }
     }
 

@@ -117,31 +117,27 @@ namespace beam::wallet {
 
     void BaseMessageEndpoint::AddOwnAddress(const WalletAddress& address)
     {
-        AddOwnAddress(address.m_OwnID, channel_from_wallet_id(address.m_walletID), address.getExpirationTime(), address.m_walletID);
-    }
-
-    void BaseMessageEndpoint::AddOwnAddress(uint64_t ownID, BbsChannel nChannel, Timestamp expirationTime, const WalletID& walletID)
-    {
         Addr::Wid key;
-        key.m_OwnID = ownID;
+        key.m_OwnID = address.m_OwnID;
 
         Addr* pAddr = nullptr;
         auto itW = m_Addresses.find(key);
 
         if (m_Addresses.end() == itW)
         {
-            pAddr = new Addr;
-            pAddr->m_ExpirationTime = expirationTime;
-            pAddr->m_Wid.m_OwnID = ownID;
-
-            if (m_WalletDB->get_MasterKdf())
+            auto privateKey = m_WalletDB->getAddressPrivateKey(address);
+            if (!privateKey)
             {
-                m_WalletDB->get_MasterKdf()->DeriveKey(pAddr->m_sk, Key::ID(ownID, Key::Type::Bbs));
-
-                proto::Sk2Pk(pAddr->m_Pk, pAddr->m_sk); // needed to "normalize" the sk, and calculate the channel
+                return;
             }
 
-            pAddr->m_Channel.m_Value = nChannel;
+            pAddr = new Addr;
+            pAddr->m_ExpirationTime = address.getExpirationTime();
+            pAddr->m_Wid.m_OwnID = address.m_OwnID;
+
+            pAddr->m_sk = *privateKey;
+
+            pAddr->m_Channel.m_Value = channel_from_wallet_id(address.m_walletID);
 
             m_Addresses.insert(pAddr->m_Wid);
             m_Channels.insert(pAddr->m_Channel);
@@ -149,7 +145,7 @@ namespace beam::wallet {
         else
         {
             pAddr = &(itW->get_ParentObj());
-            pAddr->m_ExpirationTime = expirationTime;
+            pAddr->m_ExpirationTime = address.getExpirationTime();
         }
 
         if (pAddr && IsSingleChannelUser(pAddr->m_Channel))
@@ -157,7 +153,7 @@ namespace beam::wallet {
             OnChannelAdded(pAddr->m_Channel.m_Value);
         }
 
-        LOG_INFO() << "WalletID " << to_string(walletID) << " subscribes to BBS channel " << pAddr->m_Channel.m_Value;
+        LOG_INFO() << "WalletID " << to_string(address.m_walletID) << " subscribes to BBS channel " << pAddr->m_Channel.m_Value;
     }
 
     void BaseMessageEndpoint::DeleteOwnAddress(uint64_t ownID)
