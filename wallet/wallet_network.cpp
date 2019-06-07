@@ -126,16 +126,17 @@ namespace beam::wallet {
         if (m_Addresses.end() == itW)
         {
             auto privateKey = m_WalletDB->getAddressPrivateKey(address);
-            if (!privateKey)
-            {
-                return;
-            }
 
             pAddr = new Addr;
             pAddr->m_ExpirationTime = address.getExpirationTime();
             pAddr->m_Wid.m_OwnID = address.m_OwnID;
 
-            pAddr->m_sk = *privateKey;
+            if (privateKey)
+            {
+                pAddr->m_sk = *privateKey;
+            }
+            
+            pAddr->m_Pk = address.m_walletID.m_Pk;
 
             pAddr->m_Channel.m_Value = channel_from_wallet_id(address.m_walletID);
 
