@@ -209,7 +209,7 @@ namespace beam
         callback(result);
     }
 
-    void HWWallet::generateKey(const ECC::CoinID& cid, bool isCoinKey, Result<ECC::Point> callback) const
+    void HWWallet::generateKey(const CoinID& cid, bool isCoinKey, Result<ECC::Point> callback) const
     {
         assert(isConnected());
 
