@@ -30,6 +30,9 @@ extern "C" {
 
 #include "../keykeeper/local_private_key_keeper.h"
 
+extern "C" {
+#include "pure_test_functions.h"
+}
 
 using namespace beam;
 
@@ -53,22 +56,7 @@ extern "C"
 	}
 }
 
-
-int g_TestsFailed = 0;
-
 const Height g_hFork = 3; // whatever
-
-void TestFailed(const char* szExpr, uint32_t nLine)
-{
-	printf("Test failed! Line=%u, Expression: %s\n", nLine, szExpr);
-	g_TestsFailed++;
-}
-
-#define verify_test(x) \
-	do { \
-		if (!(x)) \
-			TestFailed(#x, __LINE__); \
-	} while (false)
 
 void GenerateRandom(void* p, uint32_t n)
 {
@@ -80,6 +68,26 @@ template <uint32_t nBytes>
 void SetRandom(uintBig_t<nBytes>& x)
 {
 	GenerateRandom(x.m_pData, x.nBytes);
+}
+
+template <uint32_t nBytes>
+void SetWellKnown(uintBig_t<nBytes> &x)
+{
+	set_well_known_32b(x.m_pData);
+
+	if (nBytes != 32)
+		printf("ERROR: failed to set well-known uintbig, size != 32 bytes\n");
+}
+
+void SetWellKnown(ECC::Scalar::Native &x)
+{
+	uint8_t wellknown[32];
+	set_well_known_32b(wellknown);
+
+	int overflow = 0;
+	secp256k1_scalar_set_b32(&x.get_Raw(), wellknown, &overflow);
+	if (overflow)
+		printf("ERROR: failed to set well-known scalar, use other bytes\n");
 }
 
 void SetRandom(ECC::Scalar::Native& x)
@@ -950,6 +958,7 @@ struct KeyKeeperWrap
 	}
 
 	static CoinID& Add(std::vector<CoinID>& vec, Amount val = 0);
+	static CoinID& AddCoin(std::vector<CoinID>& vec, Amount val = 0, uint64_t nIdx = 0);
 
 	void ExportTx(Transaction& tx, const wallet::IPrivateKeyKeeper2::Method::TxCommon& tx2);
 	void TestTx(const wallet::IPrivateKeyKeeper2::Method::TxCommon& tx2);
@@ -1113,10 +1122,15 @@ struct KeyKeeperWrap
 
 CoinID& KeyKeeperWrap::Add(std::vector<CoinID>& vec, Amount val)
 {
-	CoinID& ret = vec.emplace_back();
-
 	uint64_t nIdx;
 	SetRandomOrd(nIdx);
+
+	return AddCoin(vec, val, nIdx);
+}
+
+CoinID &KeyKeeperWrap::AddCoin(std::vector<CoinID> &vec, Amount val, uint64_t nIdx)
+{
+	CoinID &ret = vec.emplace_back();
 
 	ret = CoinID(val, nIdx, Key::Type::Regular);
 	return ret;
@@ -1366,6 +1380,72 @@ void TestKeyKeeperTxs()
 	verify_test(kkw.InvokeOnBoth(mS) != KeyKeeperHwEmu::Status::Success); // Sender Phase2 can be called only once, the slot must have been invalidated
 }
 
+void Manual_SignSplit()
+{
+	ECC::Hash::Value hv;
+	SetWellKnown(hv);
+
+	KeyKeeperWrap kkw(hv);
+
+	wallet::IPrivateKeyKeeper2::Method::SignSplit m;
+
+	kkw.AddCoin(m.m_vInputs, 55, 101);
+	kkw.AddCoin(m.m_vInputs, 16, 102);
+
+	kkw.AddCoin(m.m_vOutputs, 12, 103);
+	kkw.AddCoin(m.m_vOutputs, 13, 104);
+	kkw.AddCoin(m.m_vOutputs, 14, 105);
+
+	m.m_pKernel = std::make_unique<TxKernelStd>();
+	m.m_pKernel->m_Height.m_Min = g_hFork;
+	m.m_pKernel->m_Height.m_Max = g_hFork + 40;
+	m.m_pKernel->m_Fee = 30; // Incorrect balance (funds missing)
+
+	verify_test(kkw.InvokeOnBoth(m) != KeyKeeperHwEmu::Status::Success);
+
+	m.m_pKernel->m_Fee = 32; // ok
+
+	m.m_vOutputs[0].set_Subkey(0, CoinID::Scheme::V0); // weak output scheme
+	verify_test(kkw.InvokeOnBoth(m) != KeyKeeperHwEmu::Status::Success);
+
+	m.m_vOutputs[0].set_Subkey(0, CoinID::Scheme::BB21); // weak output scheme
+	verify_test(kkw.InvokeOnBoth(m) != KeyKeeperHwEmu::Status::Success);
+
+	m.m_vOutputs[0].set_Subkey(12); // outputs to a child key
+	verify_test(kkw.InvokeOnBoth(m) != KeyKeeperHwEmu::Status::Success);
+
+	m.m_vOutputs[0].set_Subkey(0); // ok
+
+	m.m_vInputs[0].set_Subkey(14, CoinID::Scheme::V0); // weak input scheme
+	verify_test(kkw.InvokeOnBoth(m) != KeyKeeperHwEmu::Status::Success);
+
+	kkw.m_kkEmu.m_Ctx.m_AllowWeakInputs = 1;
+	kkw.m_kkStd.m_Trustless = false;																		 // no explicit flag for weak inputs, just switch to trusted mode
+	verify_test(kkw.InvokeOnBoth(m) == KeyKeeperHwEmu::Status::Success); // should work now
+	DEBUG_PRINT("Kernel.Signature.K.Val", m.m_pKernel.get()->m_Signature.m_k.m_Value.m_pData, BeamCrypto_nBytes);
+
+	kkw.TestTx(m);
+
+	// add asset
+	kkw.AddCoin(m.m_vInputs, 16, 106).m_AssetID = 12;
+	kkw.AddCoin(m.m_vOutputs, 16, 107).m_AssetID = 13;
+
+	verify_test(kkw.InvokeOnBoth(m) != KeyKeeperHwEmu::Status::Success); // different assets mixed (not allowed)
+
+	m.m_vOutputs.back().m_AssetID = 12;
+	m.m_vOutputs.back().m_Value = 15;
+	verify_test(kkw.InvokeOnBoth(m) != KeyKeeperHwEmu::Status::Success); // asset balance mismatch
+
+	m.m_vOutputs.back().m_Value = 16;
+	m.m_kOffset = Zero;																							 // m_kkStd assumes it's 0-initialized
+	verify_test(kkw.InvokeOnBoth(m) == KeyKeeperHwEmu::Status::Success); // ok
+
+	kkw.TestTx(m);
+
+	kkw.m_kkEmu.m_Ctx.m_AllowWeakInputs = 0;
+	kkw.m_kkStd.m_Trustless = true;
+}
+
 int main()
 {
 	Rules::get().CA.Enabled = true;
@@ -1374,17 +1454,20 @@ int main()
 
 	//InitContext();
 
-	TestMultiMac();
-	TestNonceGen();
-	TestOracle();
-	TestKdf();
-	TestCoins();
-	TestSignature();
-	TestKrn();
-	TestPKdfExport();
-	TestKeyKeeperTxs();
+	// TestMultiMac();
+	// TestNonceGen();
+	// TestOracle();
+	// TestKdf();
+	// TestCoins();
+	// TestSignature();
+	// TestKrn();
+	// TestPKdfExport();
+	// TestKeyKeeperTxs();
+
+	Manual_SignSplit();
+	test_manual_SignSplit();
 
 	printf("All done\n");
 
-    return g_TestsFailed ? -1 : 0;
+	return getTestsExistCode();
 }
