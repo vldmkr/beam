@@ -715,6 +715,7 @@ namespace ECC
 	{
 		HKdfPub(const HKdfPub&) = delete;
 
+	public:
 		HKdf::Generator m_Generator;
 		Point::Native m_PkG;
 		Point::Native m_PkJ;

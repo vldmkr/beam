@@ -34,6 +34,12 @@ extern "C" {
 #include "pure_test_functions.h"
 }
 
+#include "mnemonic/mnemonic.h"
+#include "utility/string_helpers.h"
+#include "wallet/core/secstring.h"
+
+#include <boost/algorithm/string/trim.hpp>
+
 using namespace beam;
 
 extern "C"
@@ -1446,6 +1452,40 @@ void Manual_SignSplit()
 	kkw.m_kkStd.m_Trustless = true;
 }
 
+void ReadWalletSeed(ECC::NoLeak<ECC::uintBig> &walletSeed, std::string tempPhrase)
+{
+	beam::SecString seed;
+	boost::algorithm::trim_if(tempPhrase, [](char ch) { return ch == ';'; });
+	beam::WordList phrase = string_helpers::split(tempPhrase, ';');
+
+	if (beam::isValidMnemonic(phrase, beam::language::en))
+	{
+		std::cout << "Correct phrase: " << tempPhrase << std::endl;
+
+		auto buf = beam::decodeMnemonic(phrase);
+		seed.assign(buf.data(), buf.size());
+		walletSeed.V = seed.hash().V;
+
+		std::cout << seed.hash().V << std::endl;
+	}
+	else
+	{
+		std::cout << "Invalid seed phrases provided: " << tempPhrase << std::endl;
+	}
+}
+
+void Manual_GetOwnerKey()
+{
+	ECC::NoLeak<ECC::Hash::Value> walletSeed;
+	walletSeed.V = beam::Zero;
+	ReadWalletSeed(walletSeed, "edge;video;genuine;moon;vibrant;hybrid;forum;climb;history;iron;involve;sausage;");
+
+	KeyKeeperWrap kkw(walletSeed.V);
+	kkw.m_kkEmu.get_OwnerKey();
+	DEBUG_PRINT("Seed", walletSeed.V.m_pData, BeamCrypto_nBytes);
+	DEBUG_PRINT("OwnerKey", Cast::Up<ECC::HKdfPub>(*kkw.m_kkEmu.m_pOwnerKey).m_Generator.m_Secret.V.m_pData, BeamCrypto_nBytes);
+}
+
 int main()
 {
 	Rules::get().CA.Enabled = true;
@@ -1463,6 +1503,8 @@ int main()
 	// TestKrn();
 	// TestPKdfExport();
 	// TestKeyKeeperTxs();
+
+	Manual_GetOwnerKey();
 
 	Manual_SignSplit();
 	test_manual_SignSplit();
