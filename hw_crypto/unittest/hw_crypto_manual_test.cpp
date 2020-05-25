@@ -62,7 +62,7 @@ extern "C"
 	}
 }
 
-const Height g_hFork = 3; // whatever
+const Height g_hFork = 100500; // whatever
 
 void GenerateRandom(void* p, uint32_t n)
 {
@@ -423,8 +423,10 @@ void TestCoin(const CoinID& cid, Key::IKdf& kdf, const BeamCrypto_Kdf& kdf2)
 	verify_test(sk1 == sk2);
 	verify_test(comm1 == comm2);
 
-	if (CoinID::Scheme::V1 != nScheme)
+	if (CoinID::Scheme::V1 != nScheme){
+		std::cout << "CoinID::Scheme::V1 != nScheme" << std::endl;
 		return;
+	}
 
 	// Generate multi-party output
 
@@ -444,14 +446,26 @@ void TestCoin(const CoinID& cid, Key::IKdf& kdf, const BeamCrypto_Kdf& kdf2)
 	rp.m_pKExtra = nullptr;
 	ZeroObject(rp.m_TauX);
 
+	DEBUG_PRINT("in_pt0_x", rp.m_pT[0].m_X.m_pVal, 32);
+	DEBUG_PRINT("in_pt0_y", ((uint8_t *)(&rp.m_pT[0].m_Y)), 1);
+	DEBUG_PRINT("in_pt1_x", rp.m_pT[1].m_X.m_pVal, 32);
+	DEBUG_PRINT("in_pt1_y", ((uint8_t *)(&rp.m_pT[1].m_Y)), 1);
+
 	verify_test(BeamCrypto_RangeProof_Calculate(&rp)); // Phase 2
 
 	Ecc2BC(outp.m_pConfidential->m_Part2.m_T1) = rp.m_pT[0];
 	Ecc2BC(outp.m_pConfidential->m_Part2.m_T2) = rp.m_pT[1];
 
+	DEBUG_PRINT("out_pt0", rp.m_pT[0].m_X.m_pVal, 32);
+	DEBUG_PRINT("out_pt1", rp.m_pT[1].m_X.m_pVal, 32);
+
 	ECC::Scalar::Native tauX;
 	tauX.get_Raw() = rp.m_TauX;
 	outp.m_pConfidential->m_Part3.m_TauX = tauX;
+
+	uint8_t taux32[32];
+	secp256k1_scalar_get_b32(taux32, &rp.m_TauX);
+	DEBUG_PRINT("out_taux", taux32, 32);
 
 	outp.Create(g_hFork, skDummy, kdfDummy, cid, kdf, Output::OpCode::Mpc_2); // Phase 3
 
@@ -1486,6 +1500,25 @@ void Manual_GetOwnerKey()
 	DEBUG_PRINT("OwnerKey", Cast::Up<ECC::HKdfPub>(*kkw.m_kkEmu.m_pOwnerKey).m_Generator.m_Secret.V.m_pData, BeamCrypto_nBytes);
 }
 
+void Manual_TestCoins()
+{
+	printf("Utxo key derivation and rangeproof...\n");
+
+	ECC::HKdf hkdf;
+	BeamCrypto_Kdf kdf2;
+
+	ECC::Hash::Value hv;
+	SetWellKnown(hv);
+
+	hkdf.Generate(hv);
+	BeamCrypto_Kdf_Init(&kdf2, &Ecc2BC(hv));
+
+	CoinID cid(23110, 1, 111, 11);
+	cid.set_Subkey(0);
+
+	TestCoin(cid, hkdf, kdf2);
+}
+
 int main()
 {
 	Rules::get().CA.Enabled = true;
@@ -1508,6 +1541,8 @@ int main()
 
 	Manual_SignSplit();
 	test_manual_SignSplit();
+
+	Manual_TestCoins();
 
 	printf("All done\n");
 
